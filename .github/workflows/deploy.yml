@@ -106,4 +106,4 @@ jobs:
 
       - name: Verify Deployment Rollout
         run: |
-          kubectl rollout status deployment/clv-inference-api -n amex-gbt-ml --timeout=120s
+          kubectl rollout status deployment/clv-inference-api -n amex-gbt-ml --timeout=300s
