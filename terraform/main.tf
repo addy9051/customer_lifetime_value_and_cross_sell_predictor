@@ -54,6 +54,9 @@ resource "azurerm_kubernetes_cluster" "ml_aks" {
     type = "SystemAssigned"
   }
 
+  oidc_issuer_enabled       = true
+  workload_identity_enabled = true
+
   network_profile {
     network_plugin    = "kubenet"
     load_balancer_sku = "standard"
