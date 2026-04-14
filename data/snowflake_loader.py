@@ -11,6 +11,7 @@ import argparse
 import logging
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 import snowflake.connector
 
@@ -39,21 +40,21 @@ def get_connection():
     )
 
 
-def load_table(cursor, data_dir: Path, schema: str, table_name: str, csv_filename: str):
+def load_table(cursor, data_dir: Path, database: str, schema: str, table_name: str, csv_filename: str):
     """Upload a single CSV to Snowflake via internal stage."""
     csv_path = data_dir / csv_filename
     if not csv_path.exists():
         logger.warning("Skipping %s — file not found: %s", table_name, csv_path)
         return
 
-    stage_name = f"@{schema}.%{table_name}"
-    full_table = f"{schema}.{table_name}"
+    stage_name = f"@{database}.{schema}.%{table_name}"
+    full_table = f"{database}.{schema}.{table_name}"
 
     logger.info("Loading %s → %s", csv_filename, full_table)
 
     # Create a file format for CSVs with headers
     cursor.execute(f"""
-        CREATE OR REPLACE FILE FORMAT {schema}.CSV_FORMAT
+        CREATE OR REPLACE FILE FORMAT {database}.{schema}.CSV_FORMAT
             TYPE = 'CSV'
             FIELD_OPTIONALLY_ENCLOSED_BY = '"'
             SKIP_HEADER = 1
@@ -73,7 +74,7 @@ def load_table(cursor, data_dir: Path, schema: str, table_name: str, csv_filenam
     cursor.execute(f"""
         COPY INTO {full_table}
         FROM {stage_name}
-        FILE_FORMAT = (FORMAT_NAME = '{schema}.CSV_FORMAT')
+        FILE_FORMAT = (FORMAT_NAME = '{database}.{schema}.CSV_FORMAT')
         ON_ERROR = 'CONTINUE'
     """)
 
@@ -126,18 +127,18 @@ def run_staging_transform(cursor):
     logger.info("Staging transformations complete.")
 
 
-def load_clv_labels(cursor, data_dir: Path):
+def load_clv_labels(cursor, data_dir: Path, database: str):
     """Load pre-computed CLV labels into FEATURES schema."""
     csv_path = data_dir / "clv_labels.csv"
     if not csv_path.exists():
         logger.warning("CLV labels not found — skipping")
         return
 
-    cursor.execute("CREATE SCHEMA IF NOT EXISTS FEATURES")
+    cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {database}.FEATURES")
 
-    stage_name = "@FEATURES.%CLV_LABELS"
-    cursor.execute("""
-        CREATE OR REPLACE FILE FORMAT FEATURES.CSV_FORMAT
+    stage_name = f"@{database}.FEATURES.%CLV_LABELS"
+    cursor.execute(f"""
+        CREATE OR REPLACE FILE FORMAT {database}.FEATURES.CSV_FORMAT
             TYPE = 'CSV'
             FIELD_OPTIONALLY_ENCLOSED_BY = '"'
             SKIP_HEADER = 1
@@ -145,20 +146,23 @@ def load_clv_labels(cursor, data_dir: Path):
     """)
 
     cursor.execute(f"PUT 'file://{csv_path.as_posix()}' {stage_name} AUTO_COMPRESS=TRUE OVERWRITE=TRUE")
-    cursor.execute("TRUNCATE TABLE IF EXISTS FEATURES.CLV_LABELS")
+    cursor.execute(f"TRUNCATE TABLE IF EXISTS {database}.FEATURES.CLV_LABELS")
     cursor.execute(f"""
-        COPY INTO FEATURES.CLV_LABELS
+        COPY INTO {database}.FEATURES.CLV_LABELS
         FROM {stage_name}
-        FILE_FORMAT = (FORMAT_NAME = 'FEATURES.CSV_FORMAT')
+        FILE_FORMAT = (FORMAT_NAME = '{database}.FEATURES.CSV_FORMAT')
         ON_ERROR = 'CONTINUE'
     """)
 
-    cursor.execute("SELECT COUNT(*) FROM FEATURES.CLV_LABELS")
+    cursor.execute(f"SELECT COUNT(*) FROM {database}.FEATURES.CLV_LABELS")
     count = cursor.fetchone()[0]
-    logger.info("Loaded %d CLV labels into FEATURES.CLV_LABELS", count)
+    logger.info("Loaded %d CLV labels into %s", count, f"{database}.FEATURES.CLV_LABELS")
 
 
 def main():
+    # Load environment variables from .env file
+    load_dotenv()
+
     parser = argparse.ArgumentParser(description="Load synthetic data into Snowflake")
     parser.add_argument("--data-dir", type=str, default="data/synthetic", help="Directory containing CSV files")
     parser.add_argument("--skip-staging", action="store_true", help="Skip staging transformations")
@@ -173,33 +177,32 @@ def main():
         logger.info("Snowflake Data Loader — CLV & Cross-Sell Predictor")
         logger.info("=" * 60)
 
-        # Execute DDL to create schemas and tables
-        cursor.execute("CREATE SCHEMA IF NOT EXISTS RAW")
-
+        # 1. Execute DDL first to create Database, Warehouse, and Schemas
         ddl_path = Path(__file__).parent / "schema" / "snowflake_ddl.sql"
         if ddl_path.exists():
             logger.info("Executing DDL from %s...", ddl_path)
             ddl_content = ddl_path.read_text()
-            # Execute each statement individually
-            for stmt in ddl_content.split(";"):
-                stmt = stmt.strip()
-                if stmt and not stmt.startswith("--"):
-                    try:
-                        cursor.execute(stmt)
-                    except Exception as e:
-                        # Skip non-critical DDL errors (e.g., USE statements)
-                        logger.debug("DDL statement skipped: %s", str(e)[:100])
+            try:
+                # Use Snowflake's native multi-statement execution for robustness
+                conn.execute_string(ddl_content)
+                logger.info("  → DDL execution successful")
+            except Exception as e:
+                logger.error("DDL execution failed. If the database already exists, this might be safe. Error: %s", str(e))
+        else:
+            logger.warning("DDL file NOT found at %s. Creating RAW schema manually.", ddl_path)
+            cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {database}.RAW")
 
-        # Load RAW data
+        # 2. Load RAW data into the now-active database context
+        database = os.environ.get("SNOWFLAKE_DATABASE", "CLV_CROSS_SELL")
         for table_name, csv_file in TABLE_MAP.items():
-            load_table(cursor, data_dir, "RAW", table_name, csv_file)
+            load_table(cursor, data_dir, database, "RAW", table_name, csv_file)
 
-        # Run staging transforms
+        # 3. Run staging transforms (already qualified in DDL, but good to be safe)
         if not args.skip_staging:
             run_staging_transform(cursor)
 
-        # Load CLV labels
-        load_clv_labels(cursor, data_dir)
+        # 4. Load CLV labels
+        load_clv_labels(cursor, data_dir, database)
 
         logger.info("=" * 60)
         logger.info("DATA LOAD COMPLETE")

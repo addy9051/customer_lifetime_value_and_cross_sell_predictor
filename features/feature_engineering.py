@@ -17,7 +17,11 @@ Usage:
 
 import argparse
 import logging
+import os
 from pathlib import Path
+from urllib.parse import quote_plus
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
 
 import numpy as np
 import pandas as pd
@@ -73,6 +77,74 @@ def load_data(data_dir: Path) -> dict:
         for col in cols:
             if col in tables[table_name].columns:
                 tables[table_name][col] = pd.to_datetime(tables[table_name][col], errors="coerce")
+
+    return tables
+
+
+def get_snowflake_engine():
+    """Create a Snowflake SQLAlchemy engine from environment variables."""
+    account = os.environ["SNOWFLAKE_ACCOUNT"]
+    user = os.environ["SNOWFLAKE_USER"]
+    password = os.environ["SNOWFLAKE_PASSWORD"]
+    database = os.environ.get("SNOWFLAKE_DATABASE", "CLV_CROSS_SELL")
+    warehouse = os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")
+    role = os.environ.get("SNOWFLAKE_ROLE", "SYSADMIN")
+
+    # Construct SQLAlchemy connection string with URL-encoded password
+    encoded_password = quote_plus(password)
+    connection_url = (
+        f"snowflake://{user}:{encoded_password}@{account}/{database}/STAGING"
+        f"?warehouse={warehouse}&role={role}"
+    )
+    return create_engine(connection_url)
+
+
+def load_data_snowflake(schema: str = "STAGING") -> dict:
+    """Load entity tables directly from Snowflake using SQLAlchemy and parse to Pandas."""
+    logger.info("Connecting to Snowflake via SQLAlchemy to fetch production data...")
+    engine = get_snowflake_engine()
+    database = os.environ.get("SNOWFLAKE_DATABASE", "CLV_CROSS_SELL")
+    tables = {}
+
+    with engine.connect() as conn:
+        try:
+            table_mapping = {
+                "corporate_accounts": f"{schema}.corporate_accounts",
+                "traveler_profiles": f"{schema}.traveler_profiles",
+                "bookings": f"{schema}.bookings",
+                "service_contracts": f"{schema}.service_contracts",
+                "support_tickets": f"{schema}.support_tickets",
+                "clv_labels": "FEATURES.clv_labels",  # Always fetch targets from FEATURES
+            }
+
+            for name, sf_table in table_mapping.items():
+                # Fully qualify the table name with database.schema.table
+                full_table_name = f"{database}.{sf_table}"
+                logger.info("Fetching %s from Snowflake...", full_table_name)
+                query = f"SELECT * FROM {full_table_name}"
+                # Pandas + SQLAlchemy Engine = No Warnings
+                df = pd.read_sql(query, conn)
+                # Snowflake returns UPPERCASE columns by default; downcase for pandas compat
+                df.columns = [col.lower() for col in df.columns]
+                tables[name] = df
+                logger.info("Loaded %-25s %7d rows", name, len(tables[name]))
+
+        except Exception as e:
+            logger.error("Error loading data from Snowflake: %s", str(e))
+            raise
+
+    # Parse date columns
+    date_cols = {
+        "corporate_accounts": ["onboarding_date", "churn_date"],
+        "bookings": ["booking_date", "travel_date"],
+        "service_contracts": ["start_date", "end_date"],
+        "support_tickets": ["created_date", "resolved_date"],
+    }
+    for table_name, cols in date_cols.items():
+        if table_name in tables:
+            for col in cols:
+                if col in tables[table_name].columns:
+                    tables[table_name][col] = pd.to_datetime(tables[table_name][col], errors="coerce")
 
     return tables
 
@@ -450,8 +522,17 @@ def assemble_features(
 
 
 def main():
+    # Load environment variables from .env file if it exists
+    load_dotenv()
+
     parser = argparse.ArgumentParser(description="Compute ML features from synthetic data")
     parser.add_argument("--data-dir", type=str, default="data/synthetic", help="Input data directory")
+    parser.add_argument(
+        "--source", choices=["local", "snowflake"], default="local", help="Data source: local files or Snowflake"
+    )
+    parser.add_argument(
+        "--snowflake-schema", type=str, default="STAGING", help="Snowflake schema to read raw/staging data from"
+    )
     parser.add_argument("--output-dir", type=str, default="data/features", help="Output directory for feature matrix")
     parser.add_argument("--format", choices=["csv", "parquet", "both"], default="both", help="Output format")
     args = parser.parse_args()
@@ -467,7 +548,10 @@ def main():
     logger.info("Windows: %s days", WINDOWS)
 
     # Load data
-    tables = load_data(data_dir)
+    if args.source == "snowflake":
+        tables = load_data_snowflake(schema=args.snowflake_schema)
+    else:
+        tables = load_data(data_dir)
 
     # Compute feature groups
     rfm = compute_rfm_features(tables["bookings"], tables["traveler_profiles"])
