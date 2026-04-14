@@ -221,6 +221,45 @@ def predict_churn_risk(cph, survival_df: pd.DataFrame, output_dir: Path):
     return risk_df
 
 
+def log_to_mlflow(model, metrics, params, model_name, output_dir):
+    """Log survival model experiment to MLflow (Local or Remote Databricks)."""
+    try:
+        import os
+        import mlflow
+        
+        if os.environ.get("DATABRICKS_HOST"):
+            logger.info("Remote Databricks environment detected. Configuring MLFlow tracking...")
+            mlflow.set_tracking_uri("databricks")
+            
+            user_email = os.environ.get("DATABRICKS_USER_EMAIL", "amex-gbt-dev")
+            experiment_path = f"/Users/{user_email}/survival_analysis/{model_name}"
+            mlflow.set_experiment(experiment_path)
+        else:
+            mlflow.set_experiment("Survival-Analysis")
+
+        with mlflow.start_run(run_name=model_name):
+            mlflow.log_params(params)
+            mlflow.log_metrics(metrics)
+            
+            # Log plots as artifacts
+            for plot_file in output_dir.glob("*.png"):
+                mlflow.log_artifact(str(plot_file), artifact_path="plots")
+            
+            # Log CSV summaries
+            for csv_file in output_dir.glob("*.csv"):
+                mlflow.log_artifact(str(csv_file), artifact_path="data")
+
+            # Log the model file manually as a generic artifact (lifelines has no native flavor)
+            mlflow.log_artifact(str(output_dir / "cox_ph_model.joblib"), artifact_path="model")
+            
+            logger.info("  → Successfully logged to MLflow: run=%s", model_name)
+
+    except ImportError:
+        logger.warning("MLflow not installed — skipping experiment logging")
+    except Exception as e:
+        logger.warning("MLflow logging failed: %s", e)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train survival analysis models for churn prediction")
     parser.add_argument("--features", type=str, default="data/features/account_features.parquet")
@@ -249,6 +288,17 @@ def main():
     joblib.dump(scaler, output_dir / "survival_scaler.joblib")
     joblib.dump(kmf, output_dir / "kaplan_meier_model.joblib")
     logger.info("Model artifacts saved to %s", output_dir)
+
+    # MLflow logging
+    params = {
+        "penalizer": 0.01,
+        "n_features": len(COX_FEATURES),
+        "median_survival_days": float(kmf.median_survival_time_),
+    }
+    metrics = {
+        "concordance_index": float(cph.concordance_index_),
+    }
+    log_to_mlflow(cph, metrics, params, "Cox-PH-Survival", output_dir)
 
     logger.info("=" * 60)
     logger.info("SURVIVAL ANALYSIS COMPLETE")

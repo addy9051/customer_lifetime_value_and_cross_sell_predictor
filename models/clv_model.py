@@ -223,28 +223,48 @@ def generate_shap_explanations(model, X_test, output_dir: Path):
 
 
 def log_to_mlflow(model, metrics, params, model_name, output_dir):
-    """Log experiment to MLflow if available."""
+    """Log experiment to MLflow (Local or Remote Databricks)."""
     try:
         import mlflow
         import mlflow.xgboost
         import mlflow.lightgbm
 
-        mlflow.set_experiment("CLV-Prediction")
+        # Check for remote Databricks tracking
+        if os.environ.get("DATABRICKS_HOST"):
+            logger.info("Remote Databricks environment detected. Configuring MLFlow tracking...")
+            mlflow.set_tracking_uri("databricks")
+            
+            # Use a standardized Databricks workspace path
+            # In a real environment, this would be customized per user
+            user_email = os.environ.get("DATABRICKS_USER_EMAIL", "amex-gbt-dev")
+            experiment_path = f"/Users/{user_email}/clv_prediction/{model_name}"
+            mlflow.set_experiment(experiment_path)
+        else:
+            mlflow.set_experiment("CLV-Prediction")
 
         with mlflow.start_run(run_name=model_name):
             mlflow.log_params(params)
             mlflow.log_metrics({k: v for k, v in metrics.items() if k != "model"})
 
             if "xgb" in model_name.lower():
-                mlflow.xgboost.log_model(model, artifact_path="model")
+                # For XGBoost, we log the native model
+                mlflow.xgboost.log_model(
+                    model, 
+                    artifact_path="model",
+                    registered_model_name=f"amex-gbt-clv" if os.environ.get("DATABRICKS_HOST") else None
+                )
             else:
-                mlflow.lightgbm.log_model(model, artifact_path="model")
+                mlflow.lightgbm.log_model(
+                    model, 
+                    artifact_path="model",
+                    registered_model_name=f"amex-gbt-lgbm-clv" if os.environ.get("DATABRICKS_HOST") else None
+                )
 
-            # Log SHAP plots
+            # Log SHAP plots as artifacts
             for plot_file in output_dir.glob("shap_*.png"):
                 mlflow.log_artifact(str(plot_file), artifact_path="shap")
 
-            logger.info("  → Logged to MLflow: experiment=CLV-Prediction, run=%s", model_name)
+            logger.info("  → Successfully logged to MLflow: run=%s", model_name)
 
     except ImportError:
         logger.warning("MLflow not installed — skipping experiment logging")

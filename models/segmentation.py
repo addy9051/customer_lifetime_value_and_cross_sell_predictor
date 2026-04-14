@@ -240,6 +240,45 @@ def plot_segments(df: pd.DataFrame, embedding: np.ndarray, output_dir: Path):
     logger.info("  → Segment visualizations saved")
 
 
+def log_to_mlflow(clusterer, metrics, params, model_name, output_dir):
+    """Log segmentation experiment to MLflow (Local or Remote Databricks)."""
+    try:
+        import os
+        import mlflow
+        
+        if os.environ.get("DATABRICKS_HOST"):
+            logger.info("Remote Databricks environment detected. Configuring MLFlow tracking...")
+            mlflow.set_tracking_uri("databricks")
+            
+            user_email = os.environ.get("DATABRICKS_USER_EMAIL", "amex-gbt-dev")
+            experiment_path = f"/Users/{user_email}/client_segmentation/{model_name}"
+            mlflow.set_experiment(experiment_path)
+        else:
+            mlflow.set_experiment("Client-Segmentation")
+
+    except ImportError:
+        logger.warning("MLflow not installed — skipping experiment logging")
+        return
+
+    try:
+        with mlflow.start_run(run_name=model_name):
+            mlflow.log_params(params)
+            mlflow.log_metrics(metrics)
+            
+            # Log UMAP visualization and metrics artifact
+            mlflow.log_artifact(str(output_dir / "segment_umap.png"), artifact_path="plots")
+            mlflow.log_artifact(str(output_dir / "cluster_metrics.csv"), artifact_path="data")
+            mlflow.log_artifact(str(output_dir / "account_segments.parquet"), artifact_path="data")
+
+            # Log the models
+            mlflow.log_artifact(str(output_dir / "umap_reducer.joblib"), artifact_path="model")
+            mlflow.log_artifact(str(output_dir / "hdbscan_clusterer.joblib"), artifact_path="model")
+            
+            logger.info("  → Successfully logged to MLflow: run=%s", model_name)
+    except Exception as e:
+        logger.warning("MLflow logging failed: %s", e)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Segment clients using UMAP + HDBSCAN")
     parser.add_argument("--features", type=str, default="data/features/account_features.parquet")
@@ -279,6 +318,14 @@ def main():
 
     # Save metrics
     pd.DataFrame([cluster_metrics]).to_csv(output_dir / "cluster_metrics.csv", index=False)
+
+    # MLflow logging
+    params = {
+        "min_cluster_size": 100,
+        "min_samples": 20,
+        "n_features": len(SEGMENT_FEATURES),
+    }
+    log_to_mlflow(clusterer, cluster_metrics, params, "UMAP-HDBSCAN-Segmentation", output_dir)
 
     logger.info("=" * 60)
     logger.info("SEGMENTATION COMPLETE")

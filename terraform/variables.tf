@@ -7,7 +7,7 @@ variable "resource_group_name" {
 variable "location" {
   description = "Azure Region"
   type        = string
-  default     = "East US"
+  default     = "Central US"
 }
 
 variable "cluster_name" {
@@ -31,5 +31,5 @@ variable "node_count" {
 variable "vm_size" {
   description = "VM sizes of the nodes in the AKS cluster"
   type        = string
-  default     = "Standard_D4s_v3" # Robust memory for ML inference workloads
+  default     = "Standard_D2s_v3" # Explicitly listed as available in Central US
 }

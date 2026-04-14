@@ -45,3 +45,12 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
