@@ -70,6 +70,10 @@ jobs:
 
       - name: Install kubelogin
         uses: azure/use-kubelogin@v1
+        with:
+          kubelogin-version: 'v0.0.32'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get AKS Credentials
         uses: azure/aks-set-context@v3
