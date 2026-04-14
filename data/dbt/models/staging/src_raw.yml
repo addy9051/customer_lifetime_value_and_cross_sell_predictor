@@ -1,0 +1,12 @@
+version: 2
+
+sources:
+  - name: raw
+    database: CLV_CROSS_SELL
+    schema: RAW
+    tables:
+      - name: corporate_accounts
+      - name: service_contracts
+      - name: traveler_profiles
+      - name: bookings
+      - name: support_tickets

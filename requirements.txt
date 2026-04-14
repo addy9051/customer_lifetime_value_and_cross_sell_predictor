@@ -1,0 +1,47 @@
+# Core ML & Data
+pandas>=2.1
+numpy>=1.26
+scikit-learn>=1.4
+xgboost>=2.0
+lightgbm>=4.2
+lifelines>=0.29           # Survival analysis (Cox PH, Kaplan-Meier)
+shap>=0.44                # Model interpretability
+hdbscan>=0.8.33           # Density-based clustering
+umap-learn>=0.5           # Dimensionality reduction
+optuna>=3.5               # Hyperparameter tuning
+
+# Data Generation
+faker>=22.0               # Realistic synthetic data
+
+# Data Infrastructure
+snowflake-connector-python>=3.6
+snowflake-sqlalchemy>=1.5
+
+# Azure ML
+azureml-core>=1.55
+azureml-mlflow>=1.55
+
+# MLflow
+mlflow>=2.10
+
+# API & Serving
+fastapi>=0.109
+uvicorn[standard]>=0.27
+pydantic>=2.5
+httpx>=0.26               # Async HTTP client for Streamlit → API calls
+
+# Dashboard
+streamlit>=1.30
+plotly>=5.18
+altair>=5.2
+
+# Orchestration
+apache-airflow>=2.8
+
+# Monitoring
+prometheus-client>=0.20
+prometheus-fastapi-instrumentator>=6.1
+
+# Testing & Dev
+pytest>=7.4
+ruff>=0.4

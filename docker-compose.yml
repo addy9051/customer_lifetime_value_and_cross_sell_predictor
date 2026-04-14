@@ -1,0 +1,101 @@
+version: "3.8"
+
+services:
+  # -------------------------------------------------------
+  # MLflow Tracking Server
+  # -------------------------------------------------------
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.10.0
+    container_name: clv-mlflow
+    ports:
+      - "5000:5000"
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    volumes:
+      - mlflow_data:/mlflow
+    restart: unless-stopped
+
+  # -------------------------------------------------------
+  # FastAPI Inference Service (simulating EKS)
+  # -------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: clv-api
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - ARTIFACTS_DIR=/app/models/artifacts
+      - DATA_DIR=/app/data
+    volumes:
+      - ./models/artifacts:/app/models/artifacts:ro
+      - ./data/features:/app/data/features:ro
+    depends_on:
+      - mlflow
+    restart: unless-stopped
+
+  # -------------------------------------------------------
+  # Streamlit Dashboard
+  # -------------------------------------------------------
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    container_name: clv-dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE_URL=http://api:8000
+      - FEATURES_PATH=/app/data/features/account_features.parquet
+      - SEGMENTS_PATH=/app/models/artifacts/segmentation/account_segments.parquet
+      - CHURN_PATH=/app/models/artifacts/survival/churn_risk_predictions.parquet
+      - RECS_PATH=/app/models/artifacts/cross_sell/account_recommendations.parquet
+      - PROBA_PATH=/app/models/artifacts/cross_sell/cross_sell_probabilities.parquet
+      - CLV_METRICS_PATH=/app/models/artifacts/clv/model_comparison.csv
+    volumes:
+      - ./models/artifacts:/app/models/artifacts:ro
+      - ./data/features:/app/data/features:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # -------------------------------------------------------
+  # Prometheus (metrics collection)
+  # -------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.49.0
+    container_name: clv-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # -------------------------------------------------------
+  # Grafana (dashboards)
+  # -------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.3.0
+    container_name: clv-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  mlflow_data:
+  grafana_data:

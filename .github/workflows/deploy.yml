@@ -1,0 +1,93 @@
+name: CI/CD Pipeline - Azure AKS & ACR
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  ACR_NAME: 'amexgbtmlcontainers'
+  CLUSTER_NAME: 'amex-gbt-clv-aks'
+  RESOURCE_GROUP: 'amex-gbt-ml-rg'
+  IMAGE_NAME: 'ml/clv-api'
+
+jobs:
+  infrastructure-provisioning:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init
+
+      # Note: In a true prod secure environment, you should pass AZURE_CLIENT_ID, client_secret, tenant_id, subscription_id
+      # to terraform via ARM_* env variables stored in Github Secrets
+      - name: 'Terraform Apply'
+        working-directory: ./terraform
+        run: terraform apply -auto-approve
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+  build-and-deploy:
+    name: Build Docker & Deploy to AKS
+    needs: infrastructure-provisioning
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ env.ACR_NAME }}.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and Push API Container to ACR
+        run: |
+          docker build -t ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} -f api/Dockerfile .
+          docker tag ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+
+      - name: Get AKS Credentials
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ env.RESOURCE_GROUP }}
+          cluster-name: ${{ env.CLUSTER_NAME }}
+          admin: 'false'
+          use-kubelogin: 'true'
+
+      - name: Substitute dynamically mapped image hash & Deploy to AKS
+        run: |
+          # Use sed to replace the static image literal with our dynamically built SHA image to trigger rolling updates securely
+          sed -i 's|amexgbtacr.azurecr.io/ml/clv-api:v1.0.0|${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}|g' kubernetes/api-deployment.yaml
+          
+          kubectl apply -f kubernetes/api-deployment.yaml
+          kubectl apply -f kubernetes/api-service.yaml
+
+      - name: Verify Deployment Rollout
+        run: |
+          kubectl rollout status deployment/clv-inference-api -n amex-gbt-ml --timeout=120s
