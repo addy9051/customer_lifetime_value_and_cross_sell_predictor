@@ -57,6 +57,7 @@ compute_features = BashOperator(
     bash_command=(
         f"cd {PROJECT_ROOT} && "
         f"python -m features.feature_engineering "
+        f"--source snowflake "
         f"--data-dir data/synthetic "
         f"--output-dir data/features "
         f"--format both"

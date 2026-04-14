@@ -229,7 +229,7 @@ def compute_trajectory_features(bookings: pd.DataFrame, travelers: pd.DataFrame)
         return float(((x - x_mean) * (y - y_mean)).sum() / denom)
 
     volume_trend = (
-        monthly_counts.groupby("account_id").apply(_slope, include_groups=False).rename("booking_volume_trend")
+        monthly_counts.groupby("account_id").apply(_slope).rename("booking_volume_trend")
     )
     features["booking_volume_trend"] = volume_trend
 
@@ -248,7 +248,7 @@ def compute_trajectory_features(bookings: pd.DataFrame, travelers: pd.DataFrame)
             return 0.0
         return float(((x - x_mean) * (y - y_mean)).sum() / denom)
 
-    spend_trend = monthly_spend.groupby("account_id").apply(_spend_slope, include_groups=False).rename("spend_trend")
+    spend_trend = monthly_spend.groupby("account_id").apply(_spend_slope).rename("spend_trend")
     features["spend_trend"] = spend_trend
 
     # Spend acceleration (difference between recent slope and older slope)
@@ -313,7 +313,7 @@ def compute_service_features(contracts: pd.DataFrame) -> pd.DataFrame:
         return entropy / max_entropy if max_entropy > 0 else 0
 
     diversity = (
-        active.groupby("account_id").apply(_product_diversity, include_groups=False).rename("product_diversity_score")
+        active.groupby("account_id").apply(_product_diversity).rename("product_diversity_score")
     )
     features["product_diversity_score"] = diversity
 
@@ -339,7 +339,7 @@ def compute_service_features(contracts: pd.DataFrame) -> pd.DataFrame:
 
     renewal_counts = (
         all_contracts.groupby(["account_id", "product"])
-        .apply(_count_renewals, include_groups=False)
+        .apply(_count_renewals)
         .groupby("account_id")
         .sum()
         .rename("contract_renewal_count")
@@ -411,7 +411,7 @@ def compute_support_features(tickets: pd.DataFrame) -> pd.DataFrame:
 
     features["ticket_category_concentration"] = (
         hist.groupby("account_id")
-        .apply(_category_concentration, include_groups=False)
+        .apply(_category_concentration)
         .rename("ticket_category_concentration")
     )
 

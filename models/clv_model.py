@@ -126,7 +126,8 @@ def train_xgboost(X_train, y_train, X_val, y_val, tune: bool = True):
                 )
                 model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
                 preds = model.predict(X_val)
-                return mean_squared_error(y_val, preds, squared=False)
+                mse = mean_squared_error(y_val, preds)
+                return np.sqrt(mse)
 
             study = optuna.create_study(direction="minimize")
             study.optimize(objective, n_trials=50, show_progress_bar=True)
@@ -251,8 +252,8 @@ def generate_shap_explanations(model, X_test, output_dir: Path):
 
         logger.info("  → SHAP plots saved to %s", output_dir)
 
-    except ImportError:
-        logger.warning("SHAP not installed — skipping explanations")
+    except Exception as e:
+        logger.warning("Could not generate SHAP explanations: %s", str(e))
 
 
 def log_to_mlflow(model, metrics, params, model_name, output_dir):

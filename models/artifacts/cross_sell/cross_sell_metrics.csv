@@ -1,5 +1,5 @@
 product,auc_roc,avg_precision,precision,recall,f1,support
-Neo,0.922,0.5551,0.4615,0.65,0.5398,120
-Egencia Analytics Studio,0.9259,0.5985,0.5217,0.5669,0.5434,127
-Meetings & Events,0.926,0.5536,0.4452,0.6161,0.5169,112
-Travel Consulting,0.923,0.5593,0.5,0.6797,0.5762,128
+Neo,0.9218,0.543,0.4813,0.6417,0.55,120
+Egencia Analytics Studio,0.9286,0.5981,0.5396,0.5906,0.5639,127
+Meetings & Events,0.9257,0.5491,0.463,0.6696,0.5474,112
+Travel Consulting,0.9258,0.5585,0.5,0.6797,0.5762,128
