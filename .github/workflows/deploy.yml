@@ -61,10 +61,6 @@ jobs:
       - name: Login to ACR
         run: az acr login --name ${{ env.ACR_NAME }}
 
-      - name: Create Kubernetes Namespace (if not exists)
-        run: |
-          kubectl create namespace amex-gbt-ml --dry-run=client -o yaml | kubectl apply -f -
-
       - name: Build and Push API Container to ACR
         run: |
           docker build -t ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} -f api/Dockerfile .
@@ -79,6 +75,10 @@ jobs:
           cluster-name: ${{ env.CLUSTER_NAME }}
           admin: 'false'
           use-kubelogin: 'true'
+
+      - name: Create Kubernetes Namespace (if not exists)
+        run: |
+          kubectl create namespace amex-gbt-ml --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Substitute dynamically mapped image hash & Deploy to AKS
         run: |
