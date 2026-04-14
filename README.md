@@ -205,6 +205,26 @@ curl -X POST http://localhost:8000/predict/clv \
 3. **🗺️ Segment Map** — Interactive UMAP scatter plot colored by segment with CLV-sized markers
 4. **🛒 Cross-Sell Matrix** — Product propensity heatmap across top accounts, segment-level recommendation summaries
 
+### Live Application Walkthrough
+
+The Amex GBT CLV Predictor & Cross-Sell Dashboard provides a highly dynamic, executive-friendly interface designed for actionable insights.
+
+#### 1. Portfolio Health
+A high-level aggregated view of the entire customer portfolio, displaying churn risk ratios and average Customer Lifetime Value metrics.
+![Portfolio Health](docs/images/portfolio_health_dashboard.png)
+
+#### 2. Account Explorer
+Provides a deep-dive, granular view into individual corporate accounts, offering survival analysis and customized cross-sell recommendations.
+![Account Explorer](docs/images/account_explorer_dashboard.png)
+
+#### 3. Segment Map
+Visualizes the clustering of the customer base derived from the K-Means algorithmic pipeline.
+![Segment Map](docs/images/segment_map_dashboard.png)
+
+#### 4. Cross-Sell Matrix
+A detailed correlation matrix highlighting the highest-value product bundling opportunities across the client portfolio.
+![Cross-Sell Matrix](docs/images/cross_sell_matrix_dashboard.png)
+
 ---
 
 ## 🧪 Testing
