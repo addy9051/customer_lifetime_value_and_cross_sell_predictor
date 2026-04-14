@@ -10,11 +10,7 @@ services:
     ports:
       - "5000:5000"
     command: >
-      mlflow server
-      --host 0.0.0.0
-      --port 5000
-      --backend-store-uri sqlite:///mlflow.db
-      --default-artifact-root /mlflow/artifacts
+      mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --default-artifact-root /mlflow/artifacts
     volumes:
       - mlflow_data:/mlflow
     restart: unless-stopped
@@ -107,7 +103,7 @@ services:
       - POSTGRES_PASSWORD=airflow
       - POSTGRES_DB=airflow
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      test: [ "CMD-SHELL", "pg_isready -U airflow" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -117,7 +113,7 @@ services:
     image: redis:7
     container_name: clv-redis
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -145,7 +141,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - .:/opt/airflow/project
     ports:
-      - "8080:8080"
+      - "8081:8080"
     command: webserver
     restart: unless-stopped
 
@@ -210,8 +206,21 @@ services:
     volumes:
       - .:/opt/airflow/project
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: clv-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
 volumes:
   mlflow_data:
   grafana_data:
   postgres_data:
+
 
