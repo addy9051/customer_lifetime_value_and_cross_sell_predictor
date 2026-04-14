@@ -11,8 +11,6 @@ provider "azurerm" {
   features {}
 }
 
-data "azurerm_client_config" "current" {}
-
 # =============================================================================
 # Resource Group
 # =============================================================================
@@ -71,14 +69,6 @@ resource "azurerm_kubernetes_cluster" "ml_aks" {
 resource "azurerm_role_assignment" "aks_to_acr" {
   principal_id                     = azurerm_kubernetes_cluster.ml_aks.kubelet_identity[0].object_id
   role_definition_name             = "AcrPull"
-  scope                            = azurerm_container_registry.ml_acr.id
-  skip_service_principal_aad_check = true
-}
-
-# Allow the Service Principal running the CI/CD (GitHub Action) to push images
-resource "azurerm_role_assignment" "sp_to_acr" {
-  principal_id                     = data.azurerm_client_config.current.object_id
-  role_definition_name             = "AcrPush"
   scope                            = azurerm_container_registry.ml_acr.id
   skip_service_principal_aad_check = true
 }
