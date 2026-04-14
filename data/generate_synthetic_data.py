@@ -16,8 +16,6 @@ Usage:
 
 import argparse
 import logging
-import os
-import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -241,7 +239,9 @@ def generate_bookings(
     logger.info("Generating bookings (target: ~%d)...", TARGET_BOOKINGS)
 
     # Pre-compute account lookup for churn dates
-    acct_lookup = accounts.set_index("account_id")[["tier", "is_churned", "churn_date", "onboarding_date"]].to_dict("index")
+    acct_lookup = accounts.set_index("account_id")[
+        ["tier", "is_churned", "churn_date", "onboarding_date"]
+    ].to_dict("index")
 
     # Estimate bookings per traveler to hit ~1M total
     num_travelers = len(travelers)
@@ -450,7 +450,9 @@ def compute_clv_labels(
 
 def main():
     parser = argparse.ArgumentParser(description="Generate synthetic corporate travel data")
-    parser.add_argument("--output-dir", type=str, default="data/synthetic", help="Output directory for CSV/Parquet files")
+    parser.add_argument(
+        "--output-dir", type=str, default="data/synthetic", help="Output directory for CSV/Parquet files"
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--format", choices=["csv", "parquet", "both"], default="both", help="Output format")
     args = parser.parse_args()

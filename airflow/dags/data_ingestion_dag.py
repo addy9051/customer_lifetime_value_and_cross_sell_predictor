@@ -14,8 +14,8 @@ Schedule: Manual trigger (for development); daily in production.
 from datetime import datetime, timedelta
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
 
 # -------------------------------------------------------
 # DAG Configuration
@@ -65,8 +65,9 @@ generate_data = BashOperator(
 
 def _validate_data_quality(**kwargs):
     """Run basic data quality checks on generated files."""
-    import pandas as pd
     from pathlib import Path
+
+    import pandas as pd
 
     data_dir = Path(DATA_DIR)
     issues = []
@@ -101,7 +102,7 @@ def _validate_data_quality(**kwargs):
             issues.append(f"NULL PKs in {filename}.{pk_col}: {null_pks}")
 
     if issues:
-        raise ValueError(f"Data quality issues found:\n" + "\n".join(f"  - {i}" for i in issues))
+        raise ValueError("Data quality issues found:\n" + "\n".join(f"  - {i}" for i in issues))
 
     print("✅ All data quality checks passed!")
 
@@ -132,8 +133,9 @@ load_snowflake = BashOperator(
 
 def _log_summary(**kwargs):
     """Log summary statistics to Airflow XCom for downstream monitoring."""
-    import pandas as pd
     from pathlib import Path
+
+    import pandas as pd
 
     data_dir = Path(DATA_DIR)
 

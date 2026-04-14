@@ -11,18 +11,19 @@ Usage:
 import argparse
 import json
 import logging
+import os
 import warnings
 from pathlib import Path
-import os
 
 import joblib
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -227,14 +228,14 @@ def log_to_mlflow(model, metrics, params, model_name, output_dir):
     """Log experiment to MLflow (Local or Remote Databricks)."""
     try:
         import mlflow
-        import mlflow.xgboost
         import mlflow.lightgbm
+        import mlflow.xgboost
 
         # Check for remote Databricks tracking
         if os.environ.get("DATABRICKS_HOST"):
             logger.info("Remote Databricks environment detected. Configuring MLFlow tracking...")
             mlflow.set_tracking_uri("databricks")
-            
+
             # Use a standardized Databricks workspace path
             # In a real environment, this would be customized per user
             user_email = os.environ.get("DATABRICKS_USER_EMAIL", "amex-gbt-dev")
@@ -250,15 +251,15 @@ def log_to_mlflow(model, metrics, params, model_name, output_dir):
             if "xgb" in model_name.lower():
                 # For XGBoost, we log the native model
                 mlflow.xgboost.log_model(
-                    model, 
+                    model,
                     artifact_path="model",
-                    registered_model_name=f"amex-gbt-clv" if os.environ.get("DATABRICKS_HOST") else None
+                    registered_model_name="amex-gbt-clv" if os.environ.get("DATABRICKS_HOST") else None
                 )
             else:
                 mlflow.lightgbm.log_model(
-                    model, 
+                    model,
                     artifact_path="model",
-                    registered_model_name=f"amex-gbt-lgbm-clv" if os.environ.get("DATABRICKS_HOST") else None
+                    registered_model_name="amex-gbt-lgbm-clv" if os.environ.get("DATABRICKS_HOST") else None
                 )
 
             # Log SHAP plots as artifacts

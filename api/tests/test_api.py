@@ -4,16 +4,16 @@ API Unit Tests
 Tests for the FastAPI inference service endpoints.
 """
 
+# Patch environment before importing app
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
-# Patch environment before importing app
-import os
 os.environ["ARTIFACTS_DIR"] = "models/artifacts"
 os.environ["DATA_DIR"] = "data"
 
 from api.main import app
-
 
 client = TestClient(app)
 

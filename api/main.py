@@ -16,9 +16,7 @@ Endpoints:
 import json
 import logging
 import os
-import time
 from pathlib import Path
-from typing import Optional
 
 import joblib
 import mlflow
@@ -26,7 +24,7 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 try:
     from prometheus_fastapi_instrumentator import Instrumentator
@@ -80,17 +78,17 @@ def load_models():
     if use_mlflow:
         logger.info("DATABRICKS_HOST detected. Pulling models from MLFlow Model Registry...")
         mlflow.set_tracking_uri("databricks")
-        
+
         try:
             models["clv"] = mlflow.pyfunc.load_model("models:/amex-gbt-clv/Production")
             models["survival"] = mlflow.pyfunc.load_model("models:/amex-gbt-survival/Production")
             models["cross_sell"] = mlflow.xgboost.load_model("models:/amex-gbt-cross-sell/Production")
-            
+
             # Note: For MLflow pyfunc, prediction methods differ slightly from direct scikit-learn models,
             # but standard wrapper compatibility is maintained. Feature names should ideally be embedded
             # in the MLFlow artifact's MLModel signature. For simplicity in transition, we will still fallback
             # to loading local config schemas if they exist, or rely on Pandas DataFrame schemas.
-            
+
             logger.info("Successfully loaded all 3 models from MLFlow Registry.")
         except Exception as e:
             logger.error("Failed to load models from MLFlow: %s", str(e))
@@ -307,7 +305,6 @@ async def predict_cross_sell(request: CrossSellRequest):
     if len(account_recs) == 0:
         raise HTTPException(status_code=404, detail=f"Account {request.account_id} not found")
 
-    row = account_recs.iloc[0]
     proba_row = account_proba.iloc[0]
 
     product_names = ["Neo", "Egencia Analytics Studio", "Meetings & Events", "Travel Consulting"]
@@ -429,8 +426,8 @@ async def segment_summary():
 
 @app.get("/accounts")
 async def list_accounts(
-    tier: Optional[str] = None,
-    segment: Optional[str] = None,
+    tier: str | None = None,
+    segment: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ):

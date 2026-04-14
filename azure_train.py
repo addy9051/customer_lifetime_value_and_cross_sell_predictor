@@ -12,9 +12,8 @@ Usage:
 """
 
 import os
-from pathlib import Path
 
-from azure.ai.ml import MLClient, command, Input, Output
+from azure.ai.ml import Input, MLClient, command
 from azure.ai.ml.constants import AssetTypes
 from azure.ai.ml.entities import Environment
 from azure.identity import DefaultAzureCredential
@@ -25,7 +24,7 @@ load_dotenv()
 
 def main():
     print("Authenticate & Connect to Azure ML Workspace...")
-    
+
     # Authenticate using DefaultAzureCredential.
     # It automatically checks for AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID if using a Service Principal,
     # or leverages your local Azure CLI configuration (if you've run `az login` locally).
@@ -71,7 +70,7 @@ dependencies:
         name="amex-clv-survival-env",
         description="Environment for Churn Survival Analysis",
         image="mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04:latest",
-        conda_file="environment.yml", 
+        conda_file="environment.yml",
     )
 
     # Setup the inputs for our remote run
@@ -79,7 +78,7 @@ dependencies:
     print("Configuring input dataset...")
     my_job_inputs = {
         "features_path": Input(
-            type=AssetTypes.URI_FILE, 
+            type=AssetTypes.URI_FILE,
             path="./data/features/account_features.parquet",
             description="Synthetic account features feature matrix"
         )
@@ -98,10 +97,10 @@ dependencies:
     )
 
     # Submit the job
-    print(f"🚀 Submitting job to Azure ML cluster...")
+    print("🚀 Submitting job to Azure ML cluster...")
     try:
         returned_job = ml_client.jobs.create_or_update(job)
-        print(f"✅ Job submitted successfully!")
+        print("✅ Job submitted successfully!")
         print(f"Job Name: {returned_job.name}")
         print(f"View Status here: {returned_job.studio_url}")
     except Exception as e:

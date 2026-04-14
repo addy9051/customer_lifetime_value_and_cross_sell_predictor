@@ -22,16 +22,16 @@ from pathlib import Path
 
 import joblib
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import (
-    classification_report,
-    roc_auc_score,
-    precision_recall_curve,
     average_precision_score,
+    classification_report,
+    precision_recall_curve,
+    roc_auc_score,
 )
 from sklearn.model_selection import train_test_split
 from sklearn.multioutput import MultiOutputClassifier
@@ -253,6 +253,7 @@ def log_to_mlflow(model, metrics_df, params, model_name, output_dir):
     """Log experiment to MLflow (Local or Remote Databricks)."""
     try:
         import os
+
         import mlflow
         import mlflow.xgboost
 
@@ -260,7 +261,7 @@ def log_to_mlflow(model, metrics_df, params, model_name, output_dir):
         if os.environ.get("DATABRICKS_HOST"):
             logger.info("Remote Databricks environment detected. Configuring MLFlow tracking...")
             mlflow.set_tracking_uri("databricks")
-            
+
             user_email = os.environ.get("DATABRICKS_USER_EMAIL", "amex-gbt-dev")
             experiment_path = f"/Users/{user_email}/cross_sell_propensity/{model_name}"
             mlflow.set_experiment(experiment_path)
@@ -269,20 +270,20 @@ def log_to_mlflow(model, metrics_df, params, model_name, output_dir):
 
         with mlflow.start_run(run_name=model_name):
             mlflow.log_params(params)
-            
+
             # Log aggregate metrics
             avg_metrics = metrics_df.drop(columns=["product"]).mean().to_dict()
             mlflow.log_metrics(avg_metrics)
-            
+
             # Log per-product metrics as artifact
             mlflow.log_artifact(str(output_dir / "cross_sell_metrics.csv"), artifact_path="evaluation")
-            
+
             # Log Precision-Recall plots
             mlflow.log_artifact(str(output_dir / "cross_sell_pr_curves.png"), artifact_path="plots")
 
             # Log the model
             mlflow.xgboost.log_model(
-                model, 
+                model,
                 artifact_path="model",
                 registered_model_name="amex-gbt-cross-sell" if os.environ.get("DATABRICKS_HOST") else None
             )
@@ -318,7 +319,7 @@ def main():
     metrics_df, proba = evaluate_cross_sell(model, X_test, Y_test, output_dir)
 
     # Generate recommendations for all accounts
-    rec_df = generate_recommendations(model, df, feature_cols, output_dir)
+    generate_recommendations(model, df, feature_cols, output_dir)
 
     # Save model
     joblib.dump(model, output_dir / "cross_sell_model.joblib")

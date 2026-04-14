@@ -15,7 +15,6 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
-from airflow.sensors.external_task import ExternalTaskSensor
 
 default_args = {
     "owner": "clv-pipeline",
@@ -70,8 +69,9 @@ compute_features = BashOperator(
 # -------------------------------------------------------
 
 def _validate_features(**kwargs):
-    import pandas as pd
     from pathlib import Path
+
+    import pandas as pd
 
     features_path = Path(f"{PROJECT_ROOT}/data/features/account_features.parquet")
     if not features_path.exists():
@@ -116,8 +116,9 @@ validate_features = PythonOperator(
 # -------------------------------------------------------
 
 def _log_feature_stats(**kwargs):
-    import pandas as pd
     from pathlib import Path
+
+    import pandas as pd
 
     df = pd.read_parquet(Path(f"{PROJECT_ROOT}/data/features/account_features.parquet"))
     numeric = df.select_dtypes(include=["number"])

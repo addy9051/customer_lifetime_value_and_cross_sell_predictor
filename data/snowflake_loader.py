@@ -136,7 +136,7 @@ def load_clv_labels(cursor, data_dir: Path):
     cursor.execute("CREATE SCHEMA IF NOT EXISTS FEATURES")
 
     stage_name = "@FEATURES.%CLV_LABELS"
-    cursor.execute(f"""
+    cursor.execute("""
         CREATE OR REPLACE FILE FORMAT FEATURES.CSV_FORMAT
             TYPE = 'CSV'
             FIELD_OPTIONALLY_ENCLOSED_BY = '"'

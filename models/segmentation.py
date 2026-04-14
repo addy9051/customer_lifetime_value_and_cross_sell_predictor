@@ -21,12 +21,13 @@ from pathlib import Path
 
 import joblib
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from sklearn.metrics import calinski_harabasz_score, silhouette_score
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import silhouette_score, calinski_harabasz_score
 
 warnings.filterwarnings("ignore")
 
@@ -244,12 +245,13 @@ def log_to_mlflow(clusterer, metrics, params, model_name, output_dir):
     """Log segmentation experiment to MLflow (Local or Remote Databricks)."""
     try:
         import os
+
         import mlflow
-        
+
         if os.environ.get("DATABRICKS_HOST"):
             logger.info("Remote Databricks environment detected. Configuring MLFlow tracking...")
             mlflow.set_tracking_uri("databricks")
-            
+
             user_email = os.environ.get("DATABRICKS_USER_EMAIL", "amex-gbt-dev")
             experiment_path = f"/Users/{user_email}/client_segmentation/{model_name}"
             mlflow.set_experiment(experiment_path)
@@ -264,7 +266,7 @@ def log_to_mlflow(clusterer, metrics, params, model_name, output_dir):
         with mlflow.start_run(run_name=model_name):
             mlflow.log_params(params)
             mlflow.log_metrics(metrics)
-            
+
             # Log UMAP visualization and metrics artifact
             mlflow.log_artifact(str(output_dir / "segment_umap.png"), artifact_path="plots")
             mlflow.log_artifact(str(output_dir / "cluster_metrics.csv"), artifact_path="data")
@@ -273,7 +275,7 @@ def log_to_mlflow(clusterer, metrics, params, model_name, output_dir):
             # Log the models
             mlflow.log_artifact(str(output_dir / "umap_reducer.joblib"), artifact_path="model")
             mlflow.log_artifact(str(output_dir / "hdbscan_clusterer.joblib"), artifact_path="model")
-            
+
             logger.info("  → Successfully logged to MLflow: run=%s", model_name)
     except Exception as e:
         logger.warning("MLflow logging failed: %s", e)

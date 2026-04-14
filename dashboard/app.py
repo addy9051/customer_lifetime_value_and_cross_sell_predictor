@@ -9,13 +9,10 @@ Streamlit Dashboard — CLV & Cross-Sell Predictor
 """
 
 import os
-import sys
 
 import numpy as np
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-import requests
 import streamlit as st
 
 # =============================================================================
@@ -100,7 +97,10 @@ def build_master_df():
     if not churn.empty:
         df = df.merge(churn[["account_id", "churn_risk_score", "survival_prob_365d"]], on="account_id", how="left")
     if not recs.empty:
-        df = df.merge(recs[["account_id", "top_1_product", "top_1_score", "top_2_product", "top_2_score"]], on="account_id", how="left")
+        df = df.merge(
+            recs[["account_id", "top_1_product", "top_1_score", "top_2_product", "top_2_score"]],
+            on="account_id", how="left"
+        )
 
     return df
 
@@ -231,7 +231,7 @@ if page == "🏠 Portfolio Health":
         products = ["has_neo", "has_egencia_analytics_studio", "has_meetings_and_events", "has_travel_consulting"]
         product_labels = ["Neo", "Egencia Analytics", "Meetings & Events", "Travel Consulting"]
         adoption = [df[col].mean() * 100 for col in products if col in df.columns]
-        labels_present = [l for l, col in zip(product_labels, products) if col in df.columns]
+        labels_present = [label for label, col in zip(product_labels, products) if col in df.columns]
 
         if adoption:
             fig = px.bar(
@@ -402,7 +402,9 @@ elif page == "🛒 Cross-Sell Matrix":
     st.subheader("Product Propensity Heatmap — Top 50 Accounts by CLV")
 
     top50 = merged.sort_values("clv_12m", ascending=False).head(50)
-    product_score_cols = ["Neo_score", "Egencia Analytics Studio_score", "Meetings & Events_score", "Travel Consulting_score"]
+    product_score_cols = [
+        "Neo_score", "Egencia Analytics Studio_score", "Meetings & Events_score", "Travel Consulting_score"
+    ]
 
     available_score_cols = [c for c in product_score_cols if c in top50.columns]
 

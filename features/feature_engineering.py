@@ -18,7 +18,6 @@ Usage:
 import argparse
 import logging
 from pathlib import Path
-from datetime import timedelta
 
 import numpy as np
 import pandas as pd
@@ -42,7 +41,9 @@ WINDOWS = [30, 90, 180]
 def load_data(data_dir: Path) -> dict:
     """Load all entity tables from Parquet (faster) or CSV fallback."""
     tables = {}
-    for name in ["corporate_accounts", "traveler_profiles", "bookings", "service_contracts", "support_tickets", "clv_labels"]:
+    for name in [
+        "corporate_accounts", "traveler_profiles", "bookings", "service_contracts", "support_tickets", "clv_labels"
+    ]:
         parquet_path = data_dir / f"{name}.parquet"
         csv_path = data_dir / f"{name}.csv"
 
@@ -147,7 +148,11 @@ def compute_trajectory_features(bookings: pd.DataFrame, travelers: pd.DataFrame)
             return 0.0
         return float(((x - x_mean) * (y - y_mean)).sum() / denom)
 
-    volume_trend = monthly_counts.groupby("account_id").apply(_slope, include_groups=False).rename("booking_volume_trend")
+    volume_trend = (
+        monthly_counts.groupby("account_id")
+        .apply(_slope, include_groups=False)
+        .rename("booking_volume_trend")
+    )
     features["booking_volume_trend"] = volume_trend
 
     # Monthly spend trend
@@ -173,8 +178,17 @@ def compute_trajectory_features(bookings: pd.DataFrame, travelers: pd.DataFrame)
     six_months_ago = CUTOFF_DATE - pd.Timedelta(days=180)
     twelve_months_ago = CUTOFF_DATE - pd.Timedelta(days=365)
 
-    recent_spend = hist[(hist["booking_date"] >= six_months_ago) & (~hist["is_cancelled"])].groupby("account_id")["amount"].mean()
-    older_spend = hist[(hist["booking_date"] >= twelve_months_ago) & (hist["booking_date"] < six_months_ago) & (~hist["is_cancelled"])].groupby("account_id")["amount"].mean()
+    recent_spend = (
+        hist[(hist["booking_date"] >= six_months_ago) & (~hist["is_cancelled"])]
+        .groupby("account_id")["amount"].mean()
+    )
+    older_spend = (
+        hist[
+            (hist["booking_date"] >= twelve_months_ago)
+            & (hist["booking_date"] < six_months_ago)
+            & (~hist["is_cancelled"])
+        ].groupby("account_id")["amount"].mean()
+    )
 
     spend_accel = (recent_spend - older_spend).fillna(0).rename("spend_acceleration")
     features["spend_acceleration"] = spend_accel
@@ -218,11 +232,17 @@ def compute_service_features(contracts: pd.DataFrame) -> pd.DataFrame:
         entropy = -np.sum(p * np.log2(p + 1e-10))
         return entropy / max_entropy if max_entropy > 0 else 0
 
-    diversity = active.groupby("account_id").apply(_product_diversity, include_groups=False).rename("product_diversity_score")
+    diversity = (
+        active.groupby("account_id")
+        .apply(_product_diversity, include_groups=False)
+        .rename("product_diversity_score")
+    )
     features["product_diversity_score"] = diversity
 
     # Total active contract value
-    features["active_contract_value"] = active.groupby("account_id")["contract_value"].sum().rename("active_contract_value")
+    features["active_contract_value"] = (
+        active.groupby("account_id")["contract_value"].sum().rename("active_contract_value")
+    )
 
     # Contract renewal count (contracts that started after a previous one ended for same product)
     all_contracts = contracts.sort_values(["account_id", "product", "start_date"])
@@ -268,8 +288,12 @@ def compute_support_features(tickets: pd.DataFrame) -> pd.DataFrame:
     features = {}
 
     # Overall metrics
-    features["total_ticket_count"] = hist.groupby("account_id").size().rename("total_ticket_count")
-    features["avg_resolution_hours"] = hist.groupby("account_id")["resolution_hours"].mean().rename("avg_resolution_hours")
+    features["total_ticket_count"] = (
+        hist.groupby("account_id").size().rename("total_ticket_count")
+    )
+    features["avg_resolution_hours"] = (
+        hist.groupby("account_id")["resolution_hours"].mean().rename("avg_resolution_hours")
+    )
 
     # Ticket rate per month (normalized by account tenure in the data)
     first_ticket = hist.groupby("account_id")["created_date"].min()
@@ -295,7 +319,9 @@ def compute_support_features(tickets: pd.DataFrame) -> pd.DataFrame:
 
     # Average resolution time for severe tickets
     severe_tickets = hist[hist["severity"].isin(["P1", "P2"])]
-    features["avg_severe_resolution_hours"] = severe_tickets.groupby("account_id")["resolution_hours"].mean().rename("avg_severe_resolution_hours")
+    features["avg_severe_resolution_hours"] = (
+        severe_tickets.groupby("account_id")["resolution_hours"].mean().rename("avg_severe_resolution_hours")
+    )
 
     # Category diversity (are issues spread across categories or concentrated?)
     def _category_concentration(group):
@@ -332,11 +358,15 @@ def compute_policy_features(bookings: pd.DataFrame, travelers: pd.DataFrame) -> 
         windowed = hist[hist["booking_date"] >= window_start]
         total = windowed.groupby("account_id").size()
         oop = windowed[windowed["is_out_of_policy"]].groupby("account_id").size()
-        features[f"out_of_policy_rate_{window_days}d"] = (oop / total).fillna(0).rename(f"out_of_policy_rate_{window_days}d")
+        features[f"out_of_policy_rate_{window_days}d"] = (
+            (oop / total).fillna(0).rename(f"out_of_policy_rate_{window_days}d")
+        )
 
     # OOP trend: 30d rate vs 90d rate
     if "out_of_policy_rate_30d" in features and "out_of_policy_rate_90d" in features:
-        features["oop_trend"] = (features["out_of_policy_rate_30d"] - features["out_of_policy_rate_90d"]).rename("oop_trend")
+        features["oop_trend"] = (
+            (features["out_of_policy_rate_30d"] - features["out_of_policy_rate_90d"]).rename("oop_trend")
+        )
 
     # Destination diversity (proxy for travel program complexity)
     dest_nunique = hist.groupby("account_id")["destination_region"].nunique().rename("destination_diversity")

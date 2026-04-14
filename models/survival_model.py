@@ -15,6 +15,7 @@ from pathlib import Path
 
 import joblib
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -225,12 +226,13 @@ def log_to_mlflow(model, metrics, params, model_name, output_dir):
     """Log survival model experiment to MLflow (Local or Remote Databricks)."""
     try:
         import os
+
         import mlflow
-        
+
         if os.environ.get("DATABRICKS_HOST"):
             logger.info("Remote Databricks environment detected. Configuring MLFlow tracking...")
             mlflow.set_tracking_uri("databricks")
-            
+
             user_email = os.environ.get("DATABRICKS_USER_EMAIL", "amex-gbt-dev")
             experiment_path = f"/Users/{user_email}/survival_analysis/{model_name}"
             mlflow.set_experiment(experiment_path)
@@ -240,18 +242,18 @@ def log_to_mlflow(model, metrics, params, model_name, output_dir):
         with mlflow.start_run(run_name=model_name):
             mlflow.log_params(params)
             mlflow.log_metrics(metrics)
-            
+
             # Log plots as artifacts
             for plot_file in output_dir.glob("*.png"):
                 mlflow.log_artifact(str(plot_file), artifact_path="plots")
-            
+
             # Log CSV summaries
             for csv_file in output_dir.glob("*.csv"):
                 mlflow.log_artifact(str(csv_file), artifact_path="data")
 
             # Log the model file manually as a generic artifact (lifelines has no native flavor)
             mlflow.log_artifact(str(output_dir / "cox_ph_model.joblib"), artifact_path="model")
-            
+
             logger.info("  → Successfully logged to MLflow: run=%s", model_name)
 
     except ImportError:
@@ -281,7 +283,7 @@ def main():
     cph = fit_cox_model(survival_df, output_dir)
 
     # Generate predictions
-    risk_df = predict_churn_risk(cph, survival_df, output_dir)
+    predict_churn_risk(cph, survival_df, output_dir)
 
     # Save model artifacts
     joblib.dump(cph, output_dir / "cox_ph_model.joblib")

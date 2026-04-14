@@ -10,7 +10,6 @@ Orchestrates the weekly retraining of the four core ML models:
 Schedule: Runs every Sunday at 02:00 AM, waiting for Feature Engineering to complete.
 """
 
-import os
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -55,7 +54,7 @@ wait_for_features = ExternalTaskSensor(
 # -------------------------------------------------------
 # Task 2: Model Training Operators
 # -------------------------------------------------------
-# Running models via bash. The models utilize DATABRICKS_* 
+# Running models via bash. The models utilize DATABRICKS_*
 # environment variables defined inside the Airflow Worker's environment
 
 train_clv = BashOperator(
