@@ -89,7 +89,7 @@ jobs:
 
       - name: Create Kubernetes Secret (Injecting Sensitive Data)
         run: |
-          kubectl create secret opaque clv-databricks-secrets \
+          kubectl create secret generic clv-databricks-secrets \
             --namespace amex-gbt-ml \
             --from-literal=SNOWFLAKE_PASSWORD="${{ secrets.SNOWFLAKE_PASSWORD }}" \
             --from-literal=DATABRICKS_TOKEN="${{ secrets.DATABRICKS_TOKEN }}" \
