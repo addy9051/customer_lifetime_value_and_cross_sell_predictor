@@ -50,11 +50,7 @@ dag = DAG(
 generate_data = BashOperator(
     task_id="generate_synthetic_data",
     bash_command=(
-        f"cd {PROJECT_ROOT} && "
-        f"python -m data.generate_synthetic_data "
-        f"--output-dir {DATA_DIR} "
-        f"--seed 42 "
-        f"--format both"
+        f"cd {PROJECT_ROOT} && python -m data.generate_synthetic_data --output-dir {DATA_DIR} --seed 42 --format both"
     ),
     dag=dag,
 )
@@ -62,6 +58,7 @@ generate_data = BashOperator(
 # -------------------------------------------------------
 # Task 2: Validate Data Quality
 # -------------------------------------------------------
+
 
 def _validate_data_quality(**kwargs):
     """Run basic data quality checks on generated files."""
@@ -119,17 +116,14 @@ validate_data = PythonOperator(
 
 load_snowflake = BashOperator(
     task_id="load_snowflake_raw",
-    bash_command=(
-        f"cd {PROJECT_ROOT} && "
-        f"python -m data.snowflake_loader "
-        f"--data-dir {DATA_DIR}"
-    ),
+    bash_command=(f"cd {PROJECT_ROOT} && python -m data.snowflake_loader --data-dir {DATA_DIR}"),
     dag=dag,
 )
 
 # -------------------------------------------------------
 # Task 4: Log Summary Metrics
 # -------------------------------------------------------
+
 
 def _log_summary(**kwargs):
     """Log summary statistics to Airflow XCom for downstream monitoring."""

@@ -53,8 +53,13 @@ PRODUCT_NAMES = ["Neo", "Egencia Analytics Studio", "Meetings & Events", "Travel
 
 # Features to exclude
 EXCLUDE_COLS = [
-    "account_id", "tier", "region", "industry", "is_churned",
-    "clv_12m", "feature_timestamp",
+    "account_id",
+    "tier",
+    "region",
+    "industry",
+    "is_churned",
+    "clv_12m",
+    "feature_timestamp",
 ] + PRODUCT_COLS  # Don't use current adoption as feature for predicting adoption
 
 
@@ -85,7 +90,10 @@ def prepare_data(features_path: Path):
         logger.info("  %s: %.1f%%", name, Y[col].mean() * 100)
 
     X_train, X_test, Y_train, Y_test = train_test_split(
-        X, Y, test_size=0.2, random_state=42,
+        X,
+        Y,
+        test_size=0.2,
+        random_state=42,
     )
 
     logger.info("Splits — Train: %d | Test: %d", len(X_train), len(X_test))
@@ -124,9 +132,7 @@ def evaluate_cross_sell(model, X_test, Y_test, output_dir: Path):
     logger.info("Evaluating cross-sell model...")
 
     Y_pred = model.predict(X_test)
-    Y_pred_proba = np.column_stack([
-        est.predict_proba(X_test)[:, 1] for est in model.estimators_
-    ])
+    Y_pred_proba = np.column_stack([est.predict_proba(X_test)[:, 1] for est in model.estimators_])
 
     # Per-product metrics
     results = []
@@ -148,15 +154,17 @@ def evaluate_cross_sell(model, X_test, Y_test, output_dir: Path):
 
         report = classification_report(y_true, y_pred, output_dict=True, zero_division=0)
 
-        results.append({
-            "product": name,
-            "auc_roc": round(auc, 4),
-            "avg_precision": round(ap, 4),
-            "precision": round(report.get("1", {}).get("precision", 0), 4),
-            "recall": round(report.get("1", {}).get("recall", 0), 4),
-            "f1": round(report.get("1", {}).get("f1-score", 0), 4),
-            "support": int(report.get("1", {}).get("support", 0)),
-        })
+        results.append(
+            {
+                "product": name,
+                "auc_roc": round(auc, 4),
+                "avg_precision": round(ap, 4),
+                "precision": round(report.get("1", {}).get("precision", 0), 4),
+                "recall": round(report.get("1", {}).get("recall", 0), 4),
+                "f1": round(report.get("1", {}).get("f1-score", 0), 4),
+                "support": int(report.get("1", {}).get("support", 0)),
+            }
+        )
 
         # Precision-Recall curve
         ax = axes[i // 2][i % 2]
@@ -196,9 +204,7 @@ def generate_recommendations(
     X_all = df[feature_cols].copy().fillna(0)
 
     # Predict probabilities
-    proba = np.column_stack([
-        est.predict_proba(X_all)[:, 1] for est in model.estimators_
-    ])
+    proba = np.column_stack([est.predict_proba(X_all)[:, 1] for est in model.estimators_])
 
     # Build recommendation matrix
     recs = pd.DataFrame(proba, columns=[f"{name}_score" for name in PRODUCT_NAMES])
@@ -214,22 +220,26 @@ def generate_recommendations(
         account_recs = []
         for name in PRODUCT_NAMES:
             if row[f"{name}_current"] == 0:  # Not yet adopted
-                account_recs.append({
-                    "product": name,
-                    "score": row[f"{name}_score"],
-                })
+                account_recs.append(
+                    {
+                        "product": name,
+                        "score": row[f"{name}_score"],
+                    }
+                )
 
         # Sort by score descending
         account_recs.sort(key=lambda x: x["score"], reverse=True)
 
-        top_recs.append({
-            "account_id": row["account_id"],
-            "top_1_product": account_recs[0]["product"] if len(account_recs) > 0 else None,
-            "top_1_score": account_recs[0]["score"] if len(account_recs) > 0 else 0,
-            "top_2_product": account_recs[1]["product"] if len(account_recs) > 1 else None,
-            "top_2_score": account_recs[1]["score"] if len(account_recs) > 1 else 0,
-            "num_products_current": sum(row[f"{name}_current"] for name in PRODUCT_NAMES),
-        })
+        top_recs.append(
+            {
+                "account_id": row["account_id"],
+                "top_1_product": account_recs[0]["product"] if len(account_recs) > 0 else None,
+                "top_1_score": account_recs[0]["score"] if len(account_recs) > 0 else 0,
+                "top_2_product": account_recs[1]["product"] if len(account_recs) > 1 else None,
+                "top_2_score": account_recs[1]["score"] if len(account_recs) > 1 else 0,
+                "num_products_current": sum(row[f"{name}_current"] for name in PRODUCT_NAMES),
+            }
+        )
 
     rec_df = pd.DataFrame(top_recs)
     rec_df.to_csv(output_dir / "account_recommendations.csv", index=False)
@@ -285,7 +295,7 @@ def log_to_mlflow(model, metrics_df, params, model_name, output_dir):
             mlflow.xgboost.log_model(
                 model,
                 artifact_path="model",
-                registered_model_name="amex-gbt-cross-sell" if os.environ.get("DATABRICKS_HOST") else None
+                registered_model_name="amex-gbt-cross-sell" if os.environ.get("DATABRICKS_HOST") else None,
             )
 
             logger.info("  → Successfully logged to MLflow: run=%s", model_name)

@@ -32,6 +32,7 @@ st.set_page_config(
 # Data Loading (direct from files for reliability; falls back to API)
 # =============================================================================
 
+
 @st.cache_data(ttl=600)
 def load_features():
     path = os.environ.get("FEATURES_PATH", "data/features/account_features.parquet")
@@ -99,7 +100,8 @@ def build_master_df():
     if not recs.empty:
         df = df.merge(
             recs[["account_id", "top_1_product", "top_1_score", "top_2_product", "top_2_score"]],
-            on="account_id", how="left"
+            on="account_id",
+            how="left",
         )
 
     return df
@@ -116,6 +118,7 @@ SEGMENT_COLORS = {
     "Low-Engagement": "#95a5a6",
     "Unassigned": "#bdc3c7",
 }
+
 
 def styled_metric(label, value, delta=None, delta_color="normal"):
     """Display a styled metric card."""
@@ -182,7 +185,10 @@ if page == "🏠 Portfolio Health":
     with col_a:
         st.subheader("CLV Distribution by Tier")
         fig = px.box(
-            df, x="tier", y="clv_12m", color="tier",
+            df,
+            x="tier",
+            y="clv_12m",
+            color="tier",
             category_orders={"tier": ["Platinum", "Gold", "Silver", "Bronze"]},
             color_discrete_map={"Platinum": "#9b59b6", "Gold": "#f39c12", "Silver": "#95a5a6", "Bronze": "#e67e22"},
             labels={"clv_12m": "12-Month CLV ($)", "tier": "Client Tier"},
@@ -196,8 +202,11 @@ if page == "🏠 Portfolio Health":
             seg_counts = df["segment"].value_counts().reset_index()
             seg_counts.columns = ["segment", "count"]
             fig = px.pie(
-                seg_counts, values="count", names="segment",
-                color="segment", color_discrete_map=SEGMENT_COLORS,
+                seg_counts,
+                values="count",
+                names="segment",
+                color="segment",
+                color_discrete_map=SEGMENT_COLORS,
                 hole=0.4,
             )
             fig.update_layout(height=400)
@@ -214,7 +223,9 @@ if page == "🏠 Portfolio Health":
             risk_df = df[df["churn_risk_score"] > 0.5].sort_values("clv_12m", ascending=False).head(15)
             if not risk_df.empty:
                 fig = px.bar(
-                    risk_df, x="account_id", y="clv_12m",
+                    risk_df,
+                    x="account_id",
+                    y="clv_12m",
                     color="churn_risk_score",
                     color_continuous_scale="Reds",
                     labels={"clv_12m": "CLV ($)", "account_id": "Account"},
@@ -235,7 +246,8 @@ if page == "🏠 Portfolio Health":
 
         if adoption:
             fig = px.bar(
-                x=labels_present, y=adoption,
+                x=labels_present,
+                y=adoption,
                 labels={"x": "Product", "y": "Adoption Rate (%)"},
                 color=labels_present,
                 color_discrete_sequence=px.colors.qualitative.Set2,
@@ -279,8 +291,16 @@ elif page == "🔍 Account Explorer":
     st.markdown(f"**{len(filtered):,} accounts** matching filters")
 
     # Display columns
-    display_cols = ["account_id", "tier", "industry", "region", "clv_12m",
-                    "booking_count_90d", "total_spend_90d", "num_active_products"]
+    display_cols = [
+        "account_id",
+        "tier",
+        "industry",
+        "region",
+        "clv_12m",
+        "booking_count_90d",
+        "total_spend_90d",
+        "num_active_products",
+    ]
     if "segment" in filtered.columns:
         display_cols.append("segment")
     if "churn_risk_score" in filtered.columns:
@@ -351,7 +371,9 @@ elif page == "🗺️ Segment Map":
 
     # UMAP scatter
     fig = px.scatter(
-        df, x="umap_x", y="umap_y",
+        df,
+        x="umap_x",
+        y="umap_y",
         color="segment" if "segment" in df.columns else "tier",
         color_discrete_map=SEGMENT_COLORS if "segment" in df.columns else None,
         hover_data=["account_id", "tier", "clv_12m", "is_churned"],
@@ -366,14 +388,18 @@ elif page == "🗺️ Segment Map":
     # Segment breakdown table
     if "segment" in df.columns:
         st.subheader("Segment Breakdown")
-        seg_stats = df.groupby("segment").agg(
-            Accounts=("account_id", "count"),
-            Avg_CLV=("clv_12m", "mean"),
-            Total_CLV=("clv_12m", "sum"),
-            Avg_Spend_90d=("total_spend_90d", "mean"),
-            Churn_Rate=("is_churned", "mean"),
-            Avg_Products=("num_active_products", "mean"),
-        ).round(2)
+        seg_stats = (
+            df.groupby("segment")
+            .agg(
+                Accounts=("account_id", "count"),
+                Avg_CLV=("clv_12m", "mean"),
+                Total_CLV=("clv_12m", "sum"),
+                Avg_Spend_90d=("total_spend_90d", "mean"),
+                Churn_Rate=("is_churned", "mean"),
+                Avg_Products=("num_active_products", "mean"),
+            )
+            .round(2)
+        )
         st.dataframe(seg_stats, use_container_width=True)
 
 
@@ -403,7 +429,10 @@ elif page == "🛒 Cross-Sell Matrix":
 
     top50 = merged.sort_values("clv_12m", ascending=False).head(50)
     product_score_cols = [
-        "Neo_score", "Egencia Analytics Studio_score", "Meetings & Events_score", "Travel Consulting_score"
+        "Neo_score",
+        "Egencia Analytics Studio_score",
+        "Meetings & Events_score",
+        "Travel Consulting_score",
     ]
 
     available_score_cols = [c for c in product_score_cols if c in top50.columns]

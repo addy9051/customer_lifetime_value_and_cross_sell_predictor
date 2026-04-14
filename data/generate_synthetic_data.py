@@ -40,14 +40,28 @@ OBSERVATION_END = datetime(2024, 12, 31)
 OBSERVATION_DAYS = (OBSERVATION_END - OBSERVATION_START).days
 
 INDUSTRIES = [
-    "Technology", "Financial Services", "Healthcare", "Manufacturing",
-    "Consulting", "Legal", "Energy", "Pharmaceuticals", "Retail",
-    "Media & Entertainment", "Government", "Education", "Telecommunications",
-    "Logistics & Transportation", "Real Estate",
+    "Technology",
+    "Financial Services",
+    "Healthcare",
+    "Manufacturing",
+    "Consulting",
+    "Legal",
+    "Energy",
+    "Pharmaceuticals",
+    "Retail",
+    "Media & Entertainment",
+    "Government",
+    "Education",
+    "Telecommunications",
+    "Logistics & Transportation",
+    "Real Estate",
 ]
 
 REGIONS = [
-    "North America", "EMEA", "APAC", "LATAM",
+    "North America",
+    "EMEA",
+    "APAC",
+    "LATAM",
 ]
 
 TIERS = ["Platinum", "Gold", "Silver", "Bronze"]
@@ -60,8 +74,12 @@ BOOKING_TYPES = ["Flight", "Hotel", "Rail", "Car"]
 BOOKING_TYPE_WEIGHTS = [0.40, 0.35, 0.15, 0.10]
 
 DESTINATION_REGIONS = [
-    "Domestic", "Europe", "Asia-Pacific", "Latin America",
-    "Middle East & Africa", "Canada",
+    "Domestic",
+    "Europe",
+    "Asia-Pacific",
+    "Latin America",
+    "Middle East & Africa",
+    "Canada",
 ]
 DESTINATION_WEIGHTS = [0.45, 0.22, 0.15, 0.08, 0.05, 0.05]
 
@@ -75,14 +93,21 @@ TRAVELER_TIERS = ["VIP", "Frequent", "Standard"]
 TRAVELER_TIER_WEIGHTS = [0.05, 0.25, 0.70]
 
 TRAVELER_ROLES = [
-    "Executive", "Senior Manager", "Manager", "Director",
-    "Analyst", "Consultant", "Engineer", "Sales Representative",
+    "Executive",
+    "Senior Manager",
+    "Manager",
+    "Director",
+    "Analyst",
+    "Consultant",
+    "Engineer",
+    "Sales Representative",
 ]
 
 
 # =============================================================================
 # Account-level behavior profiles (drives realistic correlations)
 # =============================================================================
+
 
 def _account_behavior_profile(tier: str, is_churned: bool, rng: np.random.Generator) -> dict:
     """Generate correlated behavioral parameters for one account.
@@ -108,6 +133,7 @@ def _account_behavior_profile(tier: str, is_churned: bool, rng: np.random.Genera
 # =============================================================================
 # Entity Generators
 # =============================================================================
+
 
 def generate_accounts(rng: np.random.Generator) -> pd.DataFrame:
     """Generate 5,000 corporate client accounts."""
@@ -146,17 +172,19 @@ def generate_accounts(rng: np.random.Generator) -> pd.DataFrame:
     acv_base = {"Platinum": 500_000, "Gold": 200_000, "Silver": 80_000, "Bronze": 25_000}
     acv = np.array([max(5000, rng.normal(acv_base[t], acv_base[t] * 0.3)) for t in tiers])
 
-    accounts = pd.DataFrame({
-        "account_id": [f"ACCT-{i:05d}" for i in range(NUM_ACCOUNTS)],
-        "company_name": [fake.company() for _ in range(NUM_ACCOUNTS)],
-        "industry": industries,
-        "region": regions,
-        "tier": tiers,
-        "onboarding_date": onboarding_dates,
-        "is_churned": churn_mask,
-        "churn_date": churn_dates,
-        "annual_contract_value": np.round(acv, 2),
-    })
+    accounts = pd.DataFrame(
+        {
+            "account_id": [f"ACCT-{i:05d}" for i in range(NUM_ACCOUNTS)],
+            "company_name": [fake.company() for _ in range(NUM_ACCOUNTS)],
+            "industry": industries,
+            "region": regions,
+            "tier": tiers,
+            "onboarding_date": onboarding_dates,
+            "is_churned": churn_mask,
+            "churn_date": churn_dates,
+            "annual_contract_value": np.round(acv, 2),
+        }
+    )
 
     logger.info(
         "  → Churn rate: %.1f%% | Tier distribution: %s",
@@ -193,15 +221,17 @@ def generate_service_contracts(accounts: pd.DataFrame, rng: np.random.Generator)
                 rng.normal(acct["annual_contract_value"] * 0.15, acct["annual_contract_value"] * 0.05),
             )
 
-            rows.append({
-                "contract_id": f"CTR-{len(rows):06d}",
-                "account_id": acct["account_id"],
-                "product": product,
-                "start_date": start,
-                "end_date": end,
-                "contract_value": round(contract_value, 2),
-                "is_active": is_active,
-            })
+            rows.append(
+                {
+                    "contract_id": f"CTR-{len(rows):06d}",
+                    "account_id": acct["account_id"],
+                    "product": product,
+                    "start_date": start,
+                    "end_date": end,
+                    "contract_value": round(contract_value, 2),
+                    "is_active": is_active,
+                }
+            )
 
     contracts = pd.DataFrame(rows)
     logger.info("  → Generated %d contracts across %d products", len(contracts), len(GBT_PRODUCTS))
@@ -218,12 +248,14 @@ def generate_travelers(accounts: pd.DataFrame, rng: np.random.Generator) -> pd.D
         num_travelers = profile["avg_travelers"]
 
         for _ in range(num_travelers):
-            rows.append({
-                "traveler_id": f"TRV-{len(rows):07d}",
-                "account_id": acct["account_id"],
-                "role": rng.choice(TRAVELER_ROLES),
-                "travel_tier": rng.choice(TRAVELER_TIERS, p=TRAVELER_TIER_WEIGHTS),
-            })
+            rows.append(
+                {
+                    "traveler_id": f"TRV-{len(rows):07d}",
+                    "account_id": acct["account_id"],
+                    "role": rng.choice(TRAVELER_ROLES),
+                    "travel_tier": rng.choice(TRAVELER_TIERS, p=TRAVELER_TIER_WEIGHTS),
+                }
+            )
 
     travelers = pd.DataFrame(rows)
     logger.info("  → Generated %d travelers (avg %.1f per account)", len(travelers), len(travelers) / NUM_ACCOUNTS)
@@ -239,9 +271,9 @@ def generate_bookings(
     logger.info("Generating bookings (target: ~%d)...", TARGET_BOOKINGS)
 
     # Pre-compute account lookup for churn dates
-    acct_lookup = accounts.set_index("account_id")[
-        ["tier", "is_churned", "churn_date", "onboarding_date"]
-    ].to_dict("index")
+    acct_lookup = accounts.set_index("account_id")[["tier", "is_churned", "churn_date", "onboarding_date"]].to_dict(
+        "index"
+    )
 
     # Estimate bookings per traveler to hit ~1M total
     num_travelers = len(travelers)
@@ -297,17 +329,19 @@ def generate_bookings(
             # Travel date is 1-60 days after booking date
             travel_date = bdate + timedelta(days=int(rng.integers(1, 61)))
 
-            rows.append({
-                "booking_id": f"BKG-{booking_counter:08d}",
-                "traveler_id": traveler["traveler_id"],
-                "booking_type": btype,
-                "booking_date": bdate,
-                "travel_date": travel_date,
-                "amount": round(amount, 2),
-                "is_out_of_policy": is_out_of_policy,
-                "is_cancelled": is_cancelled,
-                "destination_region": rng.choice(DESTINATION_REGIONS, p=DESTINATION_WEIGHTS),
-            })
+            rows.append(
+                {
+                    "booking_id": f"BKG-{booking_counter:08d}",
+                    "traveler_id": traveler["traveler_id"],
+                    "booking_type": btype,
+                    "booking_date": bdate,
+                    "travel_date": travel_date,
+                    "amount": round(amount, 2),
+                    "is_out_of_policy": is_out_of_policy,
+                    "is_cancelled": is_cancelled,
+                    "destination_region": rng.choice(DESTINATION_REGIONS, p=DESTINATION_WEIGHTS),
+                }
+            )
             booking_counter += 1
 
     bookings = pd.DataFrame(rows)
@@ -321,9 +355,11 @@ def generate_bookings(
             bookings["amount"].median(),
             bookings["amount"].max(),
         )
-        logger.info("  → Cancel rate: %.1f%% | OOP rate: %.1f%%",
-                     bookings["is_cancelled"].mean() * 100,
-                     bookings["is_out_of_policy"].mean() * 100)
+        logger.info(
+            "  → Cancel rate: %.1f%% | OOP rate: %.1f%%",
+            bookings["is_cancelled"].mean() * 100,
+            bookings["is_out_of_policy"].mean() * 100,
+        )
 
     return bookings
 
@@ -358,15 +394,17 @@ def generate_support_tickets(accounts: pd.DataFrame, rng: np.random.Generator) -
 
             resolved = created + timedelta(hours=resolution_hours)
 
-            rows.append({
-                "ticket_id": f"TKT-{len(rows):07d}",
-                "account_id": acct["account_id"],
-                "created_date": created,
-                "resolved_date": resolved,
-                "severity": severity,
-                "category": rng.choice(TICKET_CATEGORIES, p=TICKET_CATEGORY_WEIGHTS),
-                "resolution_hours": round(resolution_hours, 2),
-            })
+            rows.append(
+                {
+                    "ticket_id": f"TKT-{len(rows):07d}",
+                    "account_id": acct["account_id"],
+                    "created_date": created,
+                    "resolved_date": resolved,
+                    "severity": severity,
+                    "category": rng.choice(TICKET_CATEGORIES, p=TICKET_CATEGORY_WEIGHTS),
+                    "resolution_hours": round(resolution_hours, 2),
+                }
+            )
 
     tickets = pd.DataFrame(rows)
     logger.info("  → Generated %d support tickets", len(tickets))
@@ -376,6 +414,7 @@ def generate_support_tickets(accounts: pd.DataFrame, rng: np.random.Generator) -
 # =============================================================================
 # CLV Proxy Label
 # =============================================================================
+
 
 def compute_clv_labels(
     accounts: pd.DataFrame,
@@ -412,18 +451,12 @@ def compute_clv_labels(
     booking_revenue = forward_bookings.groupby("account_id")["amount"].sum().rename("booking_revenue_12m")
 
     # Active contract value (annualized)
-    active_contracts = contracts[
-        (contracts["start_date"] <= cutoff_date)
-        & (contracts["end_date"] >= cutoff_date)
-    ]
+    active_contracts = contracts[(contracts["start_date"] <= cutoff_date) & (contracts["end_date"] >= cutoff_date)]
     contract_revenue = active_contracts.groupby("account_id")["contract_value"].sum().rename("contract_value_active")
 
     # Support cost proxy (forward 12 months)
     support_cost_map = {"P1": 2000, "P2": 500, "P3": 150, "P4": 50}
-    forward_tickets = tickets[
-        (tickets["created_date"] >= cutoff_date)
-        & (tickets["created_date"] < forward_end)
-    ].copy()
+    forward_tickets = tickets[(tickets["created_date"] >= cutoff_date) & (tickets["created_date"] < forward_end)].copy()
     forward_tickets["cost_proxy"] = forward_tickets["severity"].map(support_cost_map)
     support_cost = forward_tickets.groupby("account_id")["cost_proxy"].sum().rename("support_cost_12m")
 
@@ -447,6 +480,7 @@ def compute_clv_labels(
 # =============================================================================
 # Main
 # =============================================================================
+
 
 def main():
     parser = argparse.ArgumentParser(description="Generate synthetic corporate travel data")

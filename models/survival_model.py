@@ -62,6 +62,7 @@ def prepare_survival_data(features_path: Path):
 
     # Standardize features for Cox PH convergence
     from sklearn.preprocessing import StandardScaler
+
     scaler = StandardScaler()
     survival_df[COX_FEATURES] = scaler.fit_transform(survival_df[COX_FEATURES])
 

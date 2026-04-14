@@ -16,6 +16,7 @@ from pathlib import Path
 try:
     from pyspark.sql import SparkSession
     from pyspark.sql import functions as F
+
     HAS_SPARK = True
 except ImportError:
     HAS_SPARK = False
@@ -29,11 +30,12 @@ CUTOFF_DATE = "2023-01-01"
 
 def get_spark_session():
     """Initialize a Spark Session."""
-    return SparkSession.builder \
-        .appName("AmexGBT-FeatureEngineering") \
-        .config("spark.sql.execution.arrow.pyspark.enabled", "true") \
-        .config("spark.sql.legacy.timeParserPolicy", "LEGACY") \
+    return (
+        SparkSession.builder.appName("AmexGBT-FeatureEngineering")
+        .config("spark.sql.execution.arrow.pyspark.enabled", "true")
+        .config("spark.sql.legacy.timeParserPolicy", "LEGACY")
         .getOrCreate()
+    )
 
 
 def load_tables(spark, data_dir: Path):
@@ -64,33 +66,40 @@ def compute_rfm_features(spark, accounts_df, bookings_df, cutoff_date: str):
     past_bookings = bookings_df.filter(F.col("booking_date") < F.lit(cutoff_date).cast("timestamp"))
 
     # Base aggregation metrics
-    rfm = past_bookings.groupBy("account_id").agg(
-        F.count("*").alias("total_ticket_count"),
-        F.sum("total_amount").alias("total_spend"),
-        F.max("booking_date").alias("last_booking_date")
-    ).withColumn(
-        "days_since_last_booking",
-        F.datediff(F.lit(cutoff_date).cast("timestamp"), F.col("last_booking_date"))
+    rfm = (
+        past_bookings.groupBy("account_id")
+        .agg(
+            F.count("*").alias("total_ticket_count"),
+            F.sum("total_amount").alias("total_spend"),
+            F.max("booking_date").alias("last_booking_date"),
+        )
+        .withColumn(
+            "days_since_last_booking", F.datediff(F.lit(cutoff_date).cast("timestamp"), F.col("last_booking_date"))
+        )
     )
 
     # Time-window aggregations (30, 90, 180 days)
     for window_days in [30, 90, 180]:
         window_start = F.date_sub(F.lit(cutoff_date).cast("timestamp"), window_days)
 
-        window_df = past_bookings.filter(F.col("booking_date") >= window_start) \
-            .groupBy("account_id").agg(
+        window_df = (
+            past_bookings.filter(F.col("booking_date") >= window_start)
+            .groupBy("account_id")
+            .agg(
                 F.count("*").alias(f"booking_count_{window_days}d"),
-                F.sum("total_amount").alias(f"total_spend_{window_days}d")
+                F.sum("total_amount").alias(f"total_spend_{window_days}d"),
             )
+        )
 
         rfm = rfm.join(window_df, on="account_id", how="left")
 
         # Calculate AOV (Fill nulls with 0)
         rfm = rfm.withColumn(
             f"aov_{window_days}d",
-            F.when(F.col(f"booking_count_{window_days}d") > 0,
-                   F.col(f"total_spend_{window_days}d") / F.col(f"booking_count_{window_days}d"))
-             .otherwise(0.0)
+            F.when(
+                F.col(f"booking_count_{window_days}d") > 0,
+                F.col(f"total_spend_{window_days}d") / F.col(f"booking_count_{window_days}d"),
+            ).otherwise(0.0),
         )
 
     # Drop intermediate dates, clean up nulls
@@ -106,8 +115,8 @@ def compute_service_adoption(spark, accounts_df, contracts_df, cutoff_date: str)
 
     # Active contracts at cutoff
     active = contracts_df.filter(
-        (F.col("start_date") < F.lit(cutoff_date).cast("timestamp")) &
-        (F.col("end_date") > F.lit(cutoff_date).cast("timestamp"))
+        (F.col("start_date") < F.lit(cutoff_date).cast("timestamp"))
+        & (F.col("end_date") > F.lit(cutoff_date).cast("timestamp"))
     )
 
     # Aggregate to account level
@@ -116,11 +125,11 @@ def compute_service_adoption(spark, accounts_df, contracts_df, cutoff_date: str)
         F.sum("annual_value").alias("active_contract_value"),
         # Create boolean adoption columns using pivot-like operations
         F.max(F.when(F.col("product_line") == "Neo", 1).otherwise(0)).alias("has_neo"),
-        F.max(
-            F.when(F.col("product_line") == "Egencia Analytics Studio", 1).otherwise(0)
-        ).alias("has_egencia_analytics_studio"),
+        F.max(F.when(F.col("product_line") == "Egencia Analytics Studio", 1).otherwise(0)).alias(
+            "has_egencia_analytics_studio"
+        ),
         F.max(F.when(F.col("product_line") == "Meetings & Events", 1).otherwise(0)).alias("has_meetings_and_events"),
-        F.max(F.when(F.col("product_line") == "Travel Consulting", 1).otherwise(0)).alias("has_travel_consulting")
+        F.max(F.when(F.col("product_line") == "Travel Consulting", 1).otherwise(0)).alias("has_travel_consulting"),
     )
 
     return accounts_df.join(adoption, on="account_id", how="left").fillna(0.0)
@@ -158,9 +167,7 @@ def main():
 
         # 4. Join Labels (If Available)
         if clv is not None:
-            feature_matrix = feature_matrix.join(
-                clv.select("account_id", "clv_12m"), on="account_id", how="left"
-            )
+            feature_matrix = feature_matrix.join(clv.select("account_id", "clv_12m"), on="account_id", how="left")
 
         # 5. Output
         logger.info("Writing distributed Parquet to %s...", output_dir)

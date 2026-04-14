@@ -33,8 +33,13 @@ logger = logging.getLogger(__name__)
 
 # Features to exclude from training (identifiers, targets, metadata)
 EXCLUDE_COLS = [
-    "account_id", "tier", "region", "industry", "is_churned",
-    "clv_12m", "feature_timestamp",
+    "account_id",
+    "tier",
+    "region",
+    "industry",
+    "is_churned",
+    "clv_12m",
+    "feature_timestamp",
 ]
 
 # Target column
@@ -70,10 +75,18 @@ def prepare_data(features_path: Path):
     tier_encoded = LabelEncoder().fit_transform(df["tier"])
 
     X_train, X_temp, y_train, y_temp, tier_train, tier_temp = train_test_split(
-        X, y_log, tier_encoded, test_size=0.30, random_state=42, stratify=tier_encoded,
+        X,
+        y_log,
+        tier_encoded,
+        test_size=0.30,
+        random_state=42,
+        stratify=tier_encoded,
     )
     X_val, X_test, y_val, y_test = train_test_split(
-        X_temp, y_temp, test_size=0.50, random_state=42,
+        X_temp,
+        y_temp,
+        test_size=0.50,
+        random_state=42,
     )
 
     logger.info("Splits — Train: %d | Val: %d | Test: %d", len(X_train), len(X_val), len(X_test))
@@ -90,6 +103,7 @@ def train_xgboost(X_train, y_train, X_val, y_val, tune: bool = True):
     if tune:
         try:
             import optuna
+
             optuna.logging.set_verbosity(optuna.logging.WARNING)
 
             def objective(trial):
@@ -104,7 +118,10 @@ def train_xgboost(X_train, y_train, X_val, y_val, tune: bool = True):
                     "min_child_weight": trial.suggest_int("min_child_weight", 1, 10),
                 }
                 model = xgb.XGBRegressor(
-                    **params, random_state=42, n_jobs=-1, verbosity=0,
+                    **params,
+                    random_state=42,
+                    n_jobs=-1,
+                    verbosity=0,
                     early_stopping_rounds=50,
                 )
                 model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
@@ -119,17 +136,26 @@ def train_xgboost(X_train, y_train, X_val, y_val, tune: bool = True):
         except ImportError:
             logger.warning("Optuna not installed — using default hyperparameters")
             best_params = {
-                "n_estimators": 500, "max_depth": 6, "learning_rate": 0.05,
-                "subsample": 0.8, "colsample_bytree": 0.8,
+                "n_estimators": 500,
+                "max_depth": 6,
+                "learning_rate": 0.05,
+                "subsample": 0.8,
+                "colsample_bytree": 0.8,
             }
     else:
         best_params = {
-            "n_estimators": 500, "max_depth": 6, "learning_rate": 0.05,
-            "subsample": 0.8, "colsample_bytree": 0.8,
+            "n_estimators": 500,
+            "max_depth": 6,
+            "learning_rate": 0.05,
+            "subsample": 0.8,
+            "colsample_bytree": 0.8,
         }
 
     model = xgb.XGBRegressor(
-        **best_params, random_state=42, n_jobs=-1, verbosity=0,
+        **best_params,
+        random_state=42,
+        n_jobs=-1,
+        verbosity=0,
         early_stopping_rounds=50,
     )
     model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
@@ -156,7 +182,8 @@ def train_lightgbm(X_train, y_train, X_val, y_val):
 
     model = lgb.LGBMRegressor(**params)
     model.fit(
-        X_train, y_train,
+        X_train,
+        y_train,
         eval_set=[(X_val, y_val)],
         callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(0)],
     )
@@ -186,7 +213,11 @@ def evaluate_model(model, X_test, y_test, model_name: str) -> dict:
 
     logger.info(
         "  %s → MAE=$%.0f | RMSE=$%.0f | R²=%.4f | MAPE=%.1f%%",
-        model_name, metrics["mae"], metrics["rmse"], metrics["r2"], metrics["mape"],
+        model_name,
+        metrics["mae"],
+        metrics["rmse"],
+        metrics["r2"],
+        metrics["mape"],
     )
     return metrics
 
@@ -253,13 +284,13 @@ def log_to_mlflow(model, metrics, params, model_name, output_dir):
                 mlflow.xgboost.log_model(
                     model,
                     artifact_path="model",
-                    registered_model_name="amex-gbt-clv" if os.environ.get("DATABRICKS_HOST") else None
+                    registered_model_name="amex-gbt-clv" if os.environ.get("DATABRICKS_HOST") else None,
                 )
             else:
                 mlflow.lightgbm.log_model(
                     model,
                     artifact_path="model",
-                    registered_model_name="amex-gbt-lgbm-clv" if os.environ.get("DATABRICKS_HOST") else None
+                    registered_model_name="amex-gbt-lgbm-clv" if os.environ.get("DATABRICKS_HOST") else None,
                 )
 
             # Log SHAP plots as artifacts
@@ -307,10 +338,12 @@ def main():
     log_to_mlflow(xgb_model, xgb_metrics, xgb_params, "XGBoost-CLV", output_dir)
 
     # Feature importance
-    importance = pd.DataFrame({
-        "feature": X_train.columns,
-        "importance": xgb_model.feature_importances_,
-    }).sort_values("importance", ascending=False)
+    importance = pd.DataFrame(
+        {
+            "feature": X_train.columns,
+            "importance": xgb_model.feature_importances_,
+        }
+    ).sort_values("importance", ascending=False)
     importance.to_csv(output_dir / "feature_importance.csv", index=False)
     logger.info("Top 10 features:\n%s", importance.head(10).to_string(index=False))
 

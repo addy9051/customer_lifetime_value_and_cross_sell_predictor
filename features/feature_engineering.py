@@ -38,11 +38,17 @@ WINDOWS = [30, 90, 180]
 # Data Loading
 # =============================================================================
 
+
 def load_data(data_dir: Path) -> dict:
     """Load all entity tables from Parquet (faster) or CSV fallback."""
     tables = {}
     for name in [
-        "corporate_accounts", "traveler_profiles", "bookings", "service_contracts", "support_tickets", "clv_labels"
+        "corporate_accounts",
+        "traveler_profiles",
+        "bookings",
+        "service_contracts",
+        "support_tickets",
+        "clv_labels",
     ]:
         parquet_path = data_dir / f"{name}.parquet"
         csv_path = data_dir / f"{name}.csv"
@@ -74,6 +80,7 @@ def load_data(data_dir: Path) -> dict:
 # =============================================================================
 # Feature Group 1: RFM Features
 # =============================================================================
+
 
 def compute_rfm_features(bookings: pd.DataFrame, travelers: pd.DataFrame) -> pd.DataFrame:
     """Compute Recency, Frequency, and Monetary features per account over multiple windows."""
@@ -119,6 +126,7 @@ def compute_rfm_features(bookings: pd.DataFrame, travelers: pd.DataFrame) -> pd.
 # Feature Group 2: Behavioral Trajectory
 # =============================================================================
 
+
 def compute_trajectory_features(bookings: pd.DataFrame, travelers: pd.DataFrame) -> pd.DataFrame:
     """Compute booking volume trend, spend acceleration, and cancellation rate trends."""
     logger.info("Computing behavioral trajectory features...")
@@ -149,9 +157,7 @@ def compute_trajectory_features(bookings: pd.DataFrame, travelers: pd.DataFrame)
         return float(((x - x_mean) * (y - y_mean)).sum() / denom)
 
     volume_trend = (
-        monthly_counts.groupby("account_id")
-        .apply(_slope, include_groups=False)
-        .rename("booking_volume_trend")
+        monthly_counts.groupby("account_id").apply(_slope, include_groups=False).rename("booking_volume_trend")
     )
     features["booking_volume_trend"] = volume_trend
 
@@ -179,15 +185,16 @@ def compute_trajectory_features(bookings: pd.DataFrame, travelers: pd.DataFrame)
     twelve_months_ago = CUTOFF_DATE - pd.Timedelta(days=365)
 
     recent_spend = (
-        hist[(hist["booking_date"] >= six_months_ago) & (~hist["is_cancelled"])]
-        .groupby("account_id")["amount"].mean()
+        hist[(hist["booking_date"] >= six_months_ago) & (~hist["is_cancelled"])].groupby("account_id")["amount"].mean()
     )
     older_spend = (
         hist[
             (hist["booking_date"] >= twelve_months_ago)
             & (hist["booking_date"] < six_months_ago)
             & (~hist["is_cancelled"])
-        ].groupby("account_id")["amount"].mean()
+        ]
+        .groupby("account_id")["amount"]
+        .mean()
     )
 
     spend_accel = (recent_spend - older_spend).fillna(0).rename("spend_acceleration")
@@ -211,6 +218,7 @@ def compute_trajectory_features(bookings: pd.DataFrame, travelers: pd.DataFrame)
 # Feature Group 3: Service Adoption
 # =============================================================================
 
+
 def compute_service_features(contracts: pd.DataFrame) -> pd.DataFrame:
     """Compute service adoption features from contract data."""
     logger.info("Computing service adoption features...")
@@ -233,9 +241,7 @@ def compute_service_features(contracts: pd.DataFrame) -> pd.DataFrame:
         return entropy / max_entropy if max_entropy > 0 else 0
 
     diversity = (
-        active.groupby("account_id")
-        .apply(_product_diversity, include_groups=False)
-        .rename("product_diversity_score")
+        active.groupby("account_id").apply(_product_diversity, include_groups=False).rename("product_diversity_score")
     )
     features["product_diversity_score"] = diversity
 
@@ -259,9 +265,13 @@ def compute_service_features(contracts: pd.DataFrame) -> pd.DataFrame:
             prev_end = row["end_date"]
         return renewals
 
-    renewal_counts = all_contracts.groupby(["account_id", "product"]).apply(
-        _count_renewals, include_groups=False
-    ).groupby("account_id").sum().rename("contract_renewal_count")
+    renewal_counts = (
+        all_contracts.groupby(["account_id", "product"])
+        .apply(_count_renewals, include_groups=False)
+        .groupby("account_id")
+        .sum()
+        .rename("contract_renewal_count")
+    )
     features["contract_renewal_count"] = renewal_counts
 
     # Specific product adoption flags (binary — for cross-sell targeting)
@@ -279,6 +289,7 @@ def compute_service_features(contracts: pd.DataFrame) -> pd.DataFrame:
 # Feature Group 4: Support Health
 # =============================================================================
 
+
 def compute_support_features(tickets: pd.DataFrame) -> pd.DataFrame:
     """Compute support health features from ticket data."""
     logger.info("Computing support health features...")
@@ -288,9 +299,7 @@ def compute_support_features(tickets: pd.DataFrame) -> pd.DataFrame:
     features = {}
 
     # Overall metrics
-    features["total_ticket_count"] = (
-        hist.groupby("account_id").size().rename("total_ticket_count")
-    )
+    features["total_ticket_count"] = hist.groupby("account_id").size().rename("total_ticket_count")
     features["avg_resolution_hours"] = (
         hist.groupby("account_id")["resolution_hours"].mean().rename("avg_resolution_hours")
     )
@@ -328,9 +337,11 @@ def compute_support_features(tickets: pd.DataFrame) -> pd.DataFrame:
         p = group["category"].value_counts(normalize=True).values
         return p.max()  # Herfindahl-style: 1.0 = all same category
 
-    features["ticket_category_concentration"] = hist.groupby("account_id").apply(
-        _category_concentration, include_groups=False
-    ).rename("ticket_category_concentration")
+    features["ticket_category_concentration"] = (
+        hist.groupby("account_id")
+        .apply(_category_concentration, include_groups=False)
+        .rename("ticket_category_concentration")
+    )
 
     support = pd.DataFrame(features)
     logger.info("  → Support features: %d columns for %d accounts", support.shape[1], support.shape[0])
@@ -340,6 +351,7 @@ def compute_support_features(tickets: pd.DataFrame) -> pd.DataFrame:
 # =============================================================================
 # Feature Group 5: Policy Compliance
 # =============================================================================
+
 
 def compute_policy_features(bookings: pd.DataFrame, travelers: pd.DataFrame) -> pd.DataFrame:
     """Compute out-of-policy booking rates and trends."""
@@ -364,8 +376,8 @@ def compute_policy_features(bookings: pd.DataFrame, travelers: pd.DataFrame) -> 
 
     # OOP trend: 30d rate vs 90d rate
     if "out_of_policy_rate_30d" in features and "out_of_policy_rate_90d" in features:
-        features["oop_trend"] = (
-            (features["out_of_policy_rate_30d"] - features["out_of_policy_rate_90d"]).rename("oop_trend")
+        features["oop_trend"] = (features["out_of_policy_rate_30d"] - features["out_of_policy_rate_90d"]).rename(
+            "oop_trend"
         )
 
     # Destination diversity (proxy for travel program complexity)
@@ -384,6 +396,7 @@ def compute_policy_features(bookings: pd.DataFrame, travelers: pd.DataFrame) -> 
 # =============================================================================
 # Feature Assembly
 # =============================================================================
+
 
 def assemble_features(
     accounts: pd.DataFrame,
@@ -434,6 +447,7 @@ def assemble_features(
 # =============================================================================
 # Main
 # =============================================================================
+
 
 def main():
     parser = argparse.ArgumentParser(description="Compute ML features from synthetic data")

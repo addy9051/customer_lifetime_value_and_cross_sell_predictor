@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env
 load_dotenv()
 
+
 def main():
     print("Authenticate & Connect to Azure ML Workspace...")
 
@@ -80,7 +81,7 @@ dependencies:
         "features_path": Input(
             type=AssetTypes.URI_FILE,
             path="./data/features/account_features.parquet",
-            description="Synthetic account features feature matrix"
+            description="Synthetic account features feature matrix",
         )
     }
 
@@ -91,7 +92,7 @@ dependencies:
         command="python -m models.survival_model --features ${{inputs.features_path}} --output-dir ./outputs",
         inputs=my_job_inputs,
         environment=custom_env,
-        compute="amex-gbt-clv", # Replace with your standard target compute cluster name in Azure ML
+        compute="amex-gbt-clv",  # Replace with your standard target compute cluster name in Azure ML
         experiment_name="churn-survival-training",
         display_name="cox-ph-survival-run",
     )
@@ -109,6 +110,7 @@ dependencies:
         # Clean up temporary environment definition
         if os.path.exists("environment.yml"):
             os.remove("environment.yml")
+
 
 if __name__ == "__main__":
     main()

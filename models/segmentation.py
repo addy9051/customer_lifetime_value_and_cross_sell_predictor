@@ -138,15 +138,21 @@ def label_segments(df: pd.DataFrame, labels: np.ndarray) -> pd.DataFrame:
     df["cluster"] = labels
 
     # Compute cluster-level statistics for labeling
-    cluster_stats = df.groupby("cluster").agg({
-        "clv_12m": "median",
-        "booking_volume_trend": "median",
-        "cancellation_rate_90d": "median",
-        "ticket_rate_per_month": "median",
-        "num_active_products": "median",
-        "total_spend_90d": "median",
-        "is_churned": "mean",
-    }).round(3)
+    cluster_stats = (
+        df.groupby("cluster")
+        .agg(
+            {
+                "clv_12m": "median",
+                "booking_volume_trend": "median",
+                "cancellation_rate_90d": "median",
+                "ticket_rate_per_month": "median",
+                "num_active_products": "median",
+                "total_spend_90d": "median",
+                "is_churned": "mean",
+            }
+        )
+        .round(3)
+    )
 
     logger.info("Cluster statistics:\n%s", cluster_stats.to_string())
 
@@ -176,13 +182,17 @@ def label_segments(df: pd.DataFrame, labels: np.ndarray) -> pd.DataFrame:
     df["segment"] = df["cluster"].map(cluster_labels)
 
     # Segment summary
-    seg_summary = df.groupby("segment").agg(
-        count=("account_id", "count"),
-        avg_clv=("clv_12m", "mean"),
-        avg_spend_90d=("total_spend_90d", "mean"),
-        churn_rate=("is_churned", "mean"),
-        avg_products=("num_active_products", "mean"),
-    ).round(2)
+    seg_summary = (
+        df.groupby("segment")
+        .agg(
+            count=("account_id", "count"),
+            avg_clv=("clv_12m", "mean"),
+            avg_spend_90d=("total_spend_90d", "mean"),
+            churn_rate=("is_churned", "mean"),
+            avg_products=("num_active_products", "mean"),
+        )
+        .round(2)
+    )
     logger.info("\nSegment Summary:\n%s", seg_summary.to_string())
 
     return df
@@ -213,8 +223,10 @@ def plot_segments(df: pd.DataFrame, embedding: np.ndarray, output_dir: Path):
             axes[0].scatter(
                 df.loc[mask, "umap_x"],
                 df.loc[mask, "umap_y"],
-                c=color, label=f"{segment} ({mask.sum()})",
-                s=8, alpha=0.6,
+                c=color,
+                label=f"{segment} ({mask.sum()})",
+                s=8,
+                alpha=0.6,
             )
     axes[0].set_title("Client Segments (UMAP + HDBSCAN)", fontsize=14, fontweight="bold")
     axes[0].set_xlabel("UMAP 1")
@@ -224,9 +236,12 @@ def plot_segments(df: pd.DataFrame, embedding: np.ndarray, output_dir: Path):
 
     # Plot 2: CLV heatmap
     scatter = axes[1].scatter(
-        df["umap_x"], df["umap_y"],
+        df["umap_x"],
+        df["umap_y"],
         c=np.log1p(df["clv_12m"]),
-        cmap="YlOrRd", s=8, alpha=0.6,
+        cmap="YlOrRd",
+        s=8,
+        alpha=0.6,
     )
     axes[1].set_title("CLV Distribution (UMAP)", fontsize=14, fontweight="bold")
     axes[1].set_xlabel("UMAP 1")

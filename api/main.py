@@ -28,6 +28,7 @@ from pydantic import BaseModel
 
 try:
     from prometheus_fastapi_instrumentator import Instrumentator
+
     HAS_PROMETHEUS = True
 except ImportError:
     HAS_PROMETHEUS = False
@@ -92,7 +93,7 @@ def load_models():
             logger.info("Successfully loaded all 3 models from MLFlow Registry.")
         except Exception as e:
             logger.error("Failed to load models from MLFlow: %s", str(e))
-            use_mlflow = False # Fall back to local if MLFlow fails during migration testing
+            use_mlflow = False  # Fall back to local if MLFlow fails during migration testing
 
     if not use_mlflow:
         # CLV model
@@ -163,6 +164,7 @@ async def startup():
 # Request / Response Schemas
 # =============================================================================
 
+
 class HealthResponse(BaseModel):
     status: str
     models_loaded: list[str]
@@ -224,6 +226,7 @@ class AccountProfile(BaseModel):
 # Endpoints
 # =============================================================================
 
+
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(
@@ -245,9 +248,23 @@ async def predict_clv(request: CLVRequest):
     if len(account) == 0:
         raise HTTPException(status_code=404, detail=f"Account {request.account_id} not found")
 
-    feature_cols = models.get("clv_features", [c for c in features.columns if c not in [
-        "account_id", "tier", "region", "industry", "is_churned", "clv_12m", "feature_timestamp",
-    ]])
+    feature_cols = models.get(
+        "clv_features",
+        [
+            c
+            for c in features.columns
+            if c
+            not in [
+                "account_id",
+                "tier",
+                "region",
+                "industry",
+                "is_churned",
+                "clv_12m",
+                "feature_timestamp",
+            ]
+        ],
+    )
 
     X = account[feature_cols].fillna(0)
     pred_log = models["clv"].predict(X)[0]
@@ -324,7 +341,7 @@ async def predict_cross_sell(request: CrossSellRequest):
 
     # Sort by score, take top_n
     recommendations.sort(key=lambda x: x["propensity_score"], reverse=True)
-    recommendations = recommendations[:request.top_n]
+    recommendations = recommendations[: request.top_n]
 
     return CrossSellResponse(
         account_id=request.account_id,
@@ -411,15 +428,20 @@ async def segment_summary():
 
     merged = features.merge(segments, on="account_id", how="left")
 
-    summary = merged.groupby("segment").agg(
-        count=("account_id", "count"),
-        avg_clv=("clv_12m", "mean"),
-        total_clv=("clv_12m", "sum"),
-        avg_spend_90d=("total_spend_90d", "mean"),
-        avg_bookings_90d=("booking_count_90d", "mean"),
-        churn_rate=("is_churned", "mean"),
-        avg_products=("num_active_products", "mean"),
-    ).round(2).reset_index()
+    summary = (
+        merged.groupby("segment")
+        .agg(
+            count=("account_id", "count"),
+            avg_clv=("clv_12m", "mean"),
+            total_clv=("clv_12m", "sum"),
+            avg_spend_90d=("total_spend_90d", "mean"),
+            avg_bookings_90d=("booking_count_90d", "mean"),
+            churn_rate=("is_churned", "mean"),
+            avg_products=("num_active_products", "mean"),
+        )
+        .round(2)
+        .reset_index()
+    )
 
     return summary.to_dict(orient="records")
 
@@ -447,10 +469,19 @@ async def list_accounts(
         df = df[df["segment"] == segment]
 
     total = len(df)
-    df = df.iloc[offset:offset + limit]
+    df = df.iloc[offset : offset + limit]
 
-    cols = ["account_id", "tier", "region", "industry", "clv_12m", "is_churned",
-            "booking_count_90d", "total_spend_90d", "num_active_products"]
+    cols = [
+        "account_id",
+        "tier",
+        "region",
+        "industry",
+        "clv_12m",
+        "is_churned",
+        "booking_count_90d",
+        "total_spend_90d",
+        "num_active_products",
+    ]
     if "segment" in df.columns:
         cols.append("segment")
 
