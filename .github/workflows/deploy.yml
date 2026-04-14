@@ -87,11 +87,20 @@ jobs:
         run: |
           kubectl create namespace amex-gbt-ml --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Create Kubernetes Secret (Injecting Sensitive Data)
+        run: |
+          kubectl create secret opaque clv-databricks-secrets \
+            --namespace amex-gbt-ml \
+            --from-literal=SNOWFLAKE_PASSWORD="${{ secrets.SNOWFLAKE_PASSWORD }}" \
+            --from-literal=DATABRICKS_TOKEN="${{ secrets.DATABRICKS_TOKEN }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Substitute dynamically mapped image hash & Deploy to AKS
         run: |
           # Use sed to replace the static image literal with our dynamically built SHA image to trigger rolling updates securely
           sed -i 's|amexgbtacr.azurecr.io/ml/clv-api:v1.0.0|${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}|g' kubernetes/api-deployment.yaml
           
+          kubectl apply -f kubernetes/api-config.yaml
           kubectl apply -f kubernetes/api-deployment.yaml
           kubectl apply -f kubernetes/api-service.yaml
 
