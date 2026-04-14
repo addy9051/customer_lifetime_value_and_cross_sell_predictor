@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: clv-dashboard-service
+  namespace: amex-gbt-ml
+  labels:
+    app: clv-dashboard
+    component: frontend
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8501
+    protocol: TCP
+    name: http
+  selector:
+    app: clv-dashboard
+    component: frontend

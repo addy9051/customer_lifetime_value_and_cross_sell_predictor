@@ -13,6 +13,7 @@ env:
   CLUSTER_NAME: 'amex-gbt-clv-aks'
   RESOURCE_GROUP: 'amex-gbt-ml-rg'
   IMAGE_NAME: 'ml/clv-api'
+  DASHBOARD_IMAGE_NAME: 'ml/clv-dashboard'
 
 jobs:
   infrastructure-provisioning:
@@ -61,12 +62,19 @@ jobs:
       - name: Login to ACR
         run: az acr login --name ${{ env.ACR_NAME }}
 
-      - name: Build and Push API Container to ACR
+      - name: Build and Push Containers to ACR
         run: |
+          # Build and push API container
           docker build -t ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} -f api/Dockerfile .
           docker tag ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+
+          # Build and push Dashboard container
+          docker build -t ${{ env.ACR_NAME }}.azurecr.io/${{ env.DASHBOARD_IMAGE_NAME }}:${{ github.sha }} -f dashboard/Dockerfile .
+          docker tag ${{ env.ACR_NAME }}.azurecr.io/${{ env.DASHBOARD_IMAGE_NAME }}:${{ github.sha }} ${{ env.ACR_NAME }}.azurecr.io/${{ env.DASHBOARD_IMAGE_NAME }}:latest
+          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.DASHBOARD_IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.DASHBOARD_IMAGE_NAME }}:latest
 
       - name: Install kubelogin
         uses: azure/use-kubelogin@v1
@@ -99,11 +107,16 @@ jobs:
         run: |
           # Use sed to replace the static image literal with our dynamically built SHA image to trigger rolling updates securely
           sed -i 's|amexgbtacr.azurecr.io/ml/clv-api:v1.0.0|${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}|g' kubernetes/api-deployment.yaml
+          sed -i 's|amexgbtacr.azurecr.io/ml/clv-dashboard:latest|${{ env.ACR_NAME }}.azurecr.io/${{ env.DASHBOARD_IMAGE_NAME }}:${{ github.sha }}|g' kubernetes/dashboard-deployment.yaml
           
           kubectl apply -f kubernetes/api-config.yaml
           kubectl apply -f kubernetes/api-deployment.yaml
           kubectl apply -f kubernetes/api-service.yaml
+          
+          kubectl apply -f kubernetes/dashboard-deployment.yaml
+          kubectl apply -f kubernetes/dashboard-service.yaml
 
       - name: Verify Deployment Rollout
         run: |
           kubectl rollout status deployment/clv-inference-api -n amex-gbt-ml --timeout=300s
+          kubectl rollout status deployment/clv-dashboard -n amex-gbt-ml --timeout=300s

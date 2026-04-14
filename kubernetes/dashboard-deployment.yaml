@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clv-dashboard
+  namespace: amex-gbt-ml
+  labels:
+    app: clv-dashboard
+    component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clv-dashboard
+      component: frontend
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: clv-dashboard
+        component: frontend
+    spec:
+      containers:
+      - name: streamlit
+        image: amexgbtacr.azurecr.io/ml/clv-dashboard:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8501
+        env:
+        - name: API_URL
+          value: "http://clv-inference-service:80"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
