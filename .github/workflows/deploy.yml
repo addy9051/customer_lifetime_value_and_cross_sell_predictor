@@ -68,6 +68,9 @@ jobs:
           docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
 
+      - name: Install kubelogin
+        uses: azure/use-kubelogin@v1
+
       - name: Get AKS Credentials
         uses: azure/aks-set-context@v3
         with:
