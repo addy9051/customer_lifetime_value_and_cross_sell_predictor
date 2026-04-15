@@ -29,10 +29,49 @@ jobs:
       - name: Format check
         run: ruff format --check .
 
+  # SECURITY: Dependency vulnerability scanning (VULN-004)
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pip-audit safety
+
+      - name: pip-audit (CVE scan)
+        run: pip-audit --strict --desc
+
+      - name: safety check
+        run: safety check --full-report
+        continue-on-error: true  # Advisory — don't block on safety DB issues
+
+      # SECURITY: Check for secrets in committed files
+      - name: Check for hardcoded secrets
+        run: |
+          echo "Checking for potential secrets in tracked files..."
+          # Fail if terraform state is tracked
+          if git ls-files --error-unmatch terraform/terraform.tfstate 2>/dev/null; then
+            echo "::error::terraform.tfstate is tracked in Git! This exposes infrastructure secrets."
+            exit 1
+          fi
+          # Fail if .env is tracked
+          if git ls-files --error-unmatch .env 2>/dev/null; then
+            echo "::error::.env is tracked in Git! This exposes credentials."
+            exit 1
+          fi
+          echo "✅ No tracked secret files found."
+
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [lint, security]
     steps:
       - uses: actions/checkout@v4
 
@@ -60,3 +99,22 @@ jobs:
 
       - name: Build Dashboard image
         run: docker build -f dashboard/Dockerfile -t clv-dashboard:test .
+
+      # SECURITY: Verify containers run as non-root (VULN-007)
+      - name: Verify non-root user (API)
+        run: |
+          USER=$(docker run --rm clv-api:test whoami)
+          if [ "$USER" = "root" ]; then
+            echo "::error::API container runs as root!"
+            exit 1
+          fi
+          echo "✅ API container runs as: $USER"
+
+      - name: Verify non-root user (Dashboard)
+        run: |
+          USER=$(docker run --rm clv-dashboard:test whoami)
+          if [ "$USER" = "root" ]; then
+            echo "::error::Dashboard container runs as root!"
+            exit 1
+          fi
+          echo "✅ Dashboard container runs as: $USER"

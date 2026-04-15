@@ -259,49 +259,71 @@ def generate_recommendations(
     return rec_df
 
 
-def log_to_mlflow(model, metrics_df, params, model_name, output_dir):
-    """Log experiment to MLflow (Local or Remote Databricks)."""
+def _setup_mlflow_local(experiment_name):
+    """Helper to configure MLflow for local tracking, clearing Databricks env."""
+    import os
+    import mlflow
+    saved_host = os.environ.pop("DATABRICKS_HOST", None)
+    saved_token = os.environ.pop("DATABRICKS_TOKEN", None)
+    try:
+        tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+        mlflow.set_tracking_uri(tracking_uri)
+        mlflow.set_experiment(experiment_name)
+    finally:
+        if saved_host:
+            os.environ["DATABRICKS_HOST"] = saved_host
+        if saved_token:
+            os.environ["DATABRICKS_TOKEN"] = saved_token
+
+
+def log_to_mlflow(model, metrics_df, params, model_name, output_dir, input_example=None):
+    """Log experiment to MLflow."""
     try:
         import os
-
         import mlflow
-        import mlflow.xgboost
+        import mlflow.sklearn
 
-        # Check for remote Databricks tracking
+        # Cast input_example to float64 to avoid MLflow integer-column warning
+        if input_example is not None:
+            input_example = input_example.astype("float64")
+
+        use_databricks = False
         if os.environ.get("DATABRICKS_HOST"):
-            logger.info("Remote Databricks environment detected. Configuring MLFlow tracking...")
             mlflow.set_tracking_uri("databricks")
-
-            user_email = os.environ.get("DATABRICKS_USER_EMAIL", "amex-gbt-dev")
-            experiment_path = f"/Users/{user_email}/cross_sell_propensity/{model_name}"
-            mlflow.set_experiment(experiment_path)
+            try:
+                experiment_path = f"/Shared/cross_sell_propensity/{model_name}"
+                mlflow.set_experiment(experiment_path)
+                use_databricks = True
+            except Exception:
+                logger.info("Databricks experiment not available, falling back to local MLflow")
+                _setup_mlflow_local("Cross-Sell-Propensity")
         else:
-            mlflow.set_experiment("Cross-Sell-Propensity")
+            _setup_mlflow_local("Cross-Sell-Propensity")
 
         with mlflow.start_run(run_name=model_name):
             mlflow.log_params(params)
 
-            # Log aggregate metrics
             avg_metrics = metrics_df.drop(columns=["product"]).mean().to_dict()
             mlflow.log_metrics(avg_metrics)
 
-            # Log per-product metrics as artifact
-            mlflow.log_artifact(str(output_dir / "cross_sell_metrics.csv"), artifact_path="evaluation")
+            metrics_path = output_dir / "cross_sell_metrics.csv"
+            if metrics_path.exists():
+                mlflow.log_artifact(str(metrics_path), artifact_path="evaluation")
 
-            # Log Precision-Recall plots
-            mlflow.log_artifact(str(output_dir / "cross_sell_pr_curves.png"), artifact_path="plots")
+            pr_path = output_dir / "cross_sell_pr_curves.png"
+            if pr_path.exists():
+                mlflow.log_artifact(str(pr_path), artifact_path="plots")
 
-            # Log the model
-            mlflow.xgboost.log_model(
+            mlflow.sklearn.log_model(
                 model,
-                artifact_path="model",
-                registered_model_name="amex-gbt-cross-sell" if os.environ.get("DATABRICKS_HOST") else None,
+                name="model",
+                input_example=input_example,
             )
 
-            logger.info("  → Successfully logged to MLflow: run=%s", model_name)
+            logger.info("Successfully logged to MLflow: run=%s", model_name)
 
     except ImportError:
-        logger.warning("MLflow not installed — skipping experiment logging")
+        logger.warning("MLflow not installed - skipping experiment logging")
     except Exception as e:
         logger.warning("MLflow logging failed: %s", e)
 
@@ -341,7 +363,7 @@ def main():
         "learning_rate": 0.05,
         "scale_pos_weight": 5,
     }
-    log_to_mlflow(model, metrics_df, params, "XGBoost-Cross-Sell", output_dir)
+    log_to_mlflow(model, metrics_df, params, "XGBoost-Cross-Sell", output_dir, input_example=X_test.head(5))
 
     # Save feature list
     with open(output_dir / "feature_columns.json", "w") as f:

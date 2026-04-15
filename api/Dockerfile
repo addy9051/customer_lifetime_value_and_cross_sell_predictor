@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# SECURITY: Create non-root user before installing anything (VULN-007)
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+
 # Install system deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -12,8 +15,15 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir --default-timeout=100 --retries 5 -r requirements.txt
 
-# Copy source code
-COPY . .
+# SECURITY: Copy only necessary source — not the entire project (VULN-009)
+COPY api/ ./api/
+COPY models/ ./models/
+COPY features/ ./features/
+COPY data/schema/ ./data/schema/
+
+# Set ownership and switch to non-root
+RUN chown -R appuser:appuser /app
+USER appuser
 
 # Expose port
 EXPOSE 8000

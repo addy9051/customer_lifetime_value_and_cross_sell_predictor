@@ -106,22 +106,42 @@ def load_data_snowflake(schema: str = "STAGING") -> dict:
     database = os.environ.get("SNOWFLAKE_DATABASE", "CLV_CROSS_SELL")
     tables = {}
 
+    # SECURITY: Allowlist of valid table names to prevent SQL injection (VULN-003)
+    import re
+    _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+    VALID_SCHEMAS = {"RAW", "STAGING", "FEATURES"}
+
+    def _validate_identifier(name: str) -> str:
+        """Validate SQL identifier against format rules and return uppercased."""
+        upper = name.strip().upper()
+        if not _IDENTIFIER_RE.match(upper):
+            raise ValueError(f"Invalid SQL identifier: '{name}'")
+        return upper
+
+    # Validate schema parameter
+    validated_schema = _validate_identifier(schema)
+    if validated_schema not in VALID_SCHEMAS:
+        raise ValueError(f"Invalid schema '{schema}' — must be one of {VALID_SCHEMAS}")
+    validated_db = _validate_identifier(database)
+
     with engine.connect() as conn:
         try:
             table_mapping = {
-                "corporate_accounts": f"{schema}.corporate_accounts",
-                "traveler_profiles": f"{schema}.traveler_profiles",
-                "bookings": f"{schema}.bookings",
-                "service_contracts": f"{schema}.service_contracts",
-                "support_tickets": f"{schema}.support_tickets",
+                "corporate_accounts": f"{validated_schema}.corporate_accounts",
+                "traveler_profiles": f"{validated_schema}.traveler_profiles",
+                "bookings": f"{validated_schema}.bookings",
+                "service_contracts": f"{validated_schema}.service_contracts",
+                "support_tickets": f"{validated_schema}.support_tickets",
                 "clv_labels": "FEATURES.clv_labels",  # Always fetch targets from FEATURES
             }
 
             for name, sf_table in table_mapping.items():
-                # Fully qualify the table name with database.schema.table
-                full_table_name = f"{database}.{sf_table}"
+                # Validate each component of the table path
+                parts = sf_table.split(".")
+                validated_parts = [_validate_identifier(p) for p in parts]
+                full_table_name = f"{validated_db}.{'.'.join(validated_parts)}"
                 logger.info("Fetching %s from Snowflake...", full_table_name)
-                query = f"SELECT * FROM {full_table_name}"
+                query = f'SELECT * FROM "{validated_db}"."{validated_parts[0]}"."{validated_parts[1]}"'
                 # Pandas + SQLAlchemy Engine = No Warnings
                 df = pd.read_sql(query, conn)
                 # Snowflake returns UPPERCASE columns by default; downcase for pandas compat
@@ -588,10 +608,18 @@ def main():
     logger.info("=" * 60)
     logger.info("Shape: %d accounts × %d features", feature_matrix.shape[0], feature_matrix.shape[1])
 
-    # Print feature statistics
+    # SECURITY: Log only non-sensitive feature statistics (VULN-018)
+    # Avoid logging exact financial statistics (CLV values, contract amounts, spend)
+    # which could expose customer financial data if logs are aggregated externally.
     numeric = feature_matrix.select_dtypes(include=[np.number])
-    stats = numeric.describe().T[["mean", "std", "min", "max"]]
-    logger.info("\nFeature Statistics:\n%s", stats.to_string())
+    sensitive_patterns = {"clv", "amount", "spend", "revenue", "contract_value", "acv"}
+    safe_columns = [c for c in numeric.columns if not any(p in c.lower() for p in sensitive_patterns)]
+    if safe_columns:
+        safe_stats = numeric[safe_columns].describe().T[["mean", "std", "min", "max"]]
+        logger.info("\nFeature Statistics (non-sensitive):\n%s", safe_stats.to_string())
+    redacted_count = len(numeric.columns) - len(safe_columns)
+    if redacted_count > 0:
+        logger.info("  (%d financial columns redacted from logs)", redacted_count)
 
 
 if __name__ == "__main__":

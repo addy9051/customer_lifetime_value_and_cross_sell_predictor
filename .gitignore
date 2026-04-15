@@ -54,3 +54,8 @@ crash.log
 crash.*.log
 *.tfvars
 *.tfvars.json
+
+# Kubernetes Secrets (never commit populated secrets)
+kubernetes/clv-secrets.yaml
+kubernetes/*-secrets.yaml
+!kubernetes/*.yaml.template

@@ -227,14 +227,22 @@ def generate_shap_explanations(model, X_test, output_dir: Path):
     """Generate SHAP explanations for the XGBoost model."""
     try:
         import shap
+        import xgboost
 
         logger.info("Generating SHAP explanations...")
-        explainer = shap.TreeExplainer(model)
 
         # Use a sample for speed
         sample_size = min(500, len(X_test))
         X_sample = X_test.iloc[:sample_size]
-        shap_values = explainer.shap_values(X_sample)
+
+        # Use XGBoost's native SHAP implementation (pred_contribs=True) to
+        # bypass the SHAP library's model dump parser, which has known
+        # compatibility issues with certain XGBoost versions.
+        booster = model.get_booster()
+        dmatrix = xgboost.DMatrix(X_sample.values, feature_names=list(X_sample.columns))
+        shap_values = booster.predict(dmatrix, pred_contribs=True)
+        # Last column is the base value (bias), remove it for plotting
+        shap_values = shap_values[:, :-1]
 
         # Summary plot (bar)
         fig, ax = plt.subplots(figsize=(12, 8))
@@ -256,52 +264,77 @@ def generate_shap_explanations(model, X_test, output_dir: Path):
         logger.warning("Could not generate SHAP explanations: %s", str(e))
 
 
-def log_to_mlflow(model, metrics, params, model_name, output_dir):
-    """Log experiment to MLflow (Local or Remote Databricks)."""
+def _setup_mlflow_local(experiment_name):
+    """Helper to configure MLflow for local tracking, clearing Databricks env."""
+    import os
+    import mlflow
+    saved_host = os.environ.pop("DATABRICKS_HOST", None)
+    saved_token = os.environ.pop("DATABRICKS_TOKEN", None)
     try:
+        tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+        mlflow.set_tracking_uri(tracking_uri)
+        mlflow.set_experiment(experiment_name)
+    finally:
+        if saved_host:
+            os.environ["DATABRICKS_HOST"] = saved_host
+        if saved_token:
+            os.environ["DATABRICKS_TOKEN"] = saved_token
+
+
+def log_to_mlflow(model, metrics, params, model_name, output_dir, input_example=None):
+    """Log CLV experiment to MLflow."""
+    try:
+        import warnings
         import mlflow
         import mlflow.lightgbm
         import mlflow.xgboost
+        import os
 
-        # Check for remote Databricks tracking
+        # Cast input_example to float64 to avoid MLflow integer-column warning
+        if input_example is not None:
+            input_example = input_example.astype("float64")
+
+        use_databricks = False
         if os.environ.get("DATABRICKS_HOST"):
-            logger.info("Remote Databricks environment detected. Configuring MLFlow tracking...")
             mlflow.set_tracking_uri("databricks")
-
-            # Use a standardized Databricks workspace path
-            # In a real environment, this would be customized per user
-            user_email = os.environ.get("DATABRICKS_USER_EMAIL", "amex-gbt-dev")
-            experiment_path = f"/Users/{user_email}/clv_prediction/{model_name}"
-            mlflow.set_experiment(experiment_path)
+            try:
+                experiment_path = f"/Shared/clv_prediction/{model_name}"
+                mlflow.set_experiment(experiment_path)
+                use_databricks = True
+            except Exception:
+                logger.info("Databricks experiment not available, falling back to local MLflow")
+                _setup_mlflow_local("CLV-Prediction")
         else:
-            mlflow.set_experiment("CLV-Prediction")
+            _setup_mlflow_local("CLV-Prediction")
 
         with mlflow.start_run(run_name=model_name):
             mlflow.log_params(params)
             mlflow.log_metrics({k: v for k, v in metrics.items() if k != "model"})
 
-            if "xgb" in model_name.lower():
-                # For XGBoost, we log the native model
-                mlflow.xgboost.log_model(
-                    model,
-                    artifact_path="model",
-                    registered_model_name="amex-gbt-clv" if os.environ.get("DATABRICKS_HOST") else None,
-                )
-            else:
-                mlflow.lightgbm.log_model(
-                    model,
-                    artifact_path="model",
-                    registered_model_name="amex-gbt-lgbm-clv" if os.environ.get("DATABRICKS_HOST") else None,
-                )
+            # Suppress XGBoost UBJSON serialization warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message=".*UBJSON.*")
+                warnings.filterwarnings("ignore", message=".*Unknown file format.*")
+                if "xgb" in model_name.lower():
+                    mlflow.xgboost.log_model(
+                        model,
+                        name="model",
+                        input_example=input_example,
+                    )
+                else:
+                    mlflow.lightgbm.log_model(
+                        model,
+                        name="model",
+                        input_example=input_example,
+                    )
 
-            # Log SHAP plots as artifacts
             for plot_file in output_dir.glob("shap_*.png"):
                 mlflow.log_artifact(str(plot_file), artifact_path="shap")
 
-            logger.info("  → Successfully logged to MLflow: run=%s", model_name)
+            logger.info("Successfully logged to MLflow: run=%s", model_name)
 
     except ImportError:
-        logger.warning("MLflow not installed — skipping experiment logging")
+        logger.warning("MLflow not installed - skipping experiment logging")
     except Exception as e:
         logger.warning("MLflow logging failed: %s", e)
 
@@ -336,7 +369,7 @@ def main():
     generate_shap_explanations(xgb_model, X_test, output_dir)
 
     # MLflow logging
-    log_to_mlflow(xgb_model, xgb_metrics, xgb_params, "XGBoost-CLV", output_dir)
+    log_to_mlflow(xgb_model, xgb_metrics, xgb_params, "XGBoost-CLV", output_dir, input_example=X_test.head(5))
 
     # Feature importance
     importance = pd.DataFrame(
@@ -356,7 +389,7 @@ def main():
             lgbm_model, lgbm_params = train_lightgbm(X_train, y_train, X_val, y_val)
             lgbm_metrics = evaluate_model(lgbm_model, X_test, y_test, "LightGBM-CLV")
             joblib.dump(lgbm_model, output_dir / "lgbm_clv_model.joblib")
-            log_to_mlflow(lgbm_model, lgbm_metrics, lgbm_params, "LightGBM-CLV", output_dir)
+            log_to_mlflow(lgbm_model, lgbm_metrics, lgbm_params, "LightGBM-CLV", output_dir, input_example=X_test.head(5))
             all_metrics.append(lgbm_metrics)
         except ImportError:
             logger.warning("LightGBM not installed — skipping benchmark")

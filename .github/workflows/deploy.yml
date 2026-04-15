@@ -99,8 +99,15 @@ jobs:
         run: |
           kubectl create secret generic clv-databricks-secrets \
             --namespace amex-gbt-ml \
+            --from-literal=SNOWFLAKE_ACCOUNT="${{ secrets.SNOWFLAKE_ACCOUNT }}" \
+            --from-literal=SNOWFLAKE_USER="${{ secrets.SNOWFLAKE_USER }}" \
             --from-literal=SNOWFLAKE_PASSWORD="${{ secrets.SNOWFLAKE_PASSWORD }}" \
+            --from-literal=SNOWFLAKE_DATABASE="CLV_CROSS_SELL" \
+            --from-literal=SNOWFLAKE_WAREHOUSE="COMPUTE_WH" \
+            --from-literal=SNOWFLAKE_ROLE="CLV_API_READER" \
+            --from-literal=DATABRICKS_HOST="${{ secrets.DATABRICKS_HOST }}" \
             --from-literal=DATABRICKS_TOKEN="${{ secrets.DATABRICKS_TOKEN }}" \
+            --from-literal=API_SECRET_KEY="${{ secrets.API_SECRET_KEY }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Substitute dynamically mapped image hash & Deploy to AKS
@@ -115,6 +122,9 @@ jobs:
           
           kubectl apply -f kubernetes/dashboard-deployment.yaml
           kubectl apply -f kubernetes/dashboard-service.yaml
+
+          # SECURITY: Deploy network policies (VULN-014)
+          kubectl apply -f kubernetes/network-policy.yaml
 
       - name: Verify Deployment Rollout
         run: |

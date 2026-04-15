@@ -1,0 +1,100 @@
+# =============================================================================
+# SECURITY: Kubernetes Network Policy (VULN-014)
+# Restricts pod-to-pod communication within the amex-gbt-ml namespace.
+# Requires Azure CNI with Calico (configured in terraform/main.tf).
+# =============================================================================
+
+# Policy 1: API pod — only accept traffic from dashboard and ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-network-policy
+  namespace: amex-gbt-ml
+spec:
+  podSelector:
+    matchLabels:
+      app: clv-predictor
+      component: api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from dashboard pods
+    - from:
+        - podSelector:
+            matchLabels:
+              app: clv-dashboard
+              component: frontend
+      ports:
+        - protocol: TCP
+          port: 8000
+    # Allow traffic from ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8000
+    # Allow Prometheus scraping
+    - from:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow outbound HTTPS (for MLflow, Snowflake, Databricks)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# Policy 2: Dashboard pod — only accept traffic from ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dashboard-network-policy
+  namespace: amex-gbt-ml
+spec:
+  podSelector:
+    matchLabels:
+      app: clv-dashboard
+      component: frontend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8501
+  egress:
+    # Allow DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow traffic to API service only
+    - to:
+        - podSelector:
+            matchLabels:
+              app: clv-predictor
+              component: api
+      ports:
+        - protocol: TCP
+          port: 8000

@@ -1,0 +1,54 @@
+# =============================================================================
+# .dockerignore — SECURITY: Prevent secrets and unnecessary files from
+# being included in Docker build context (VULN-009)
+# =============================================================================
+
+# CRITICAL: Sensitive files — NEVER include in Docker images
+.env
+.env.*
+terraform/
+*.tfstate*
+*.tfvars
+*.tfvars.json
+kubernetes/
+
+# Git and CI/CD
+.git/
+.github/
+
+# Documentation
+docs/
+*.md
+
+# Data artifacts (mounted as volumes instead)
+data/synthetic/
+data/features/
+models/artifacts/
+
+# Python build artifacts
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# IDE and tooling
+.vscode/
+.idea/
+.ruff_cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Airflow local state
+airflow/logs/
+airflow/airflow.db

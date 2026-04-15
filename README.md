@@ -171,7 +171,9 @@ docker compose up --build
 **Services launched**:
 - **API**: http://localhost:8000 (+ docs at /docs)
 - **Dashboard**: http://localhost:8501
+- **Airflow**: http://localhost:8081 
 - **MLflow**: http://localhost:5000
+- **pgAdmin**: http://localhost:5050 
 - **Prometheus**: http://localhost:9090
 - **Grafana**: http://localhost:3000
 

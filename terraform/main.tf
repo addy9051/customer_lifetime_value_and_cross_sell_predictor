@@ -5,6 +5,14 @@ terraform {
       version = "~> 3.0"
     }
   }
+
+  # SECURITY: Remote backend — prevents tfstate (containing secrets) from local storage or Git commits
+  backend "azurerm" {
+    resource_group_name  = "amex-gbt-ml-rg"
+    storage_account_name = "amexgbttfstate"
+    container_name       = "tfstate"
+    key                  = "clv-predictor.tfstate"
+  }
 }
 
 provider "azurerm" {
@@ -58,7 +66,8 @@ resource "azurerm_kubernetes_cluster" "ml_aks" {
   workload_identity_enabled = true
 
   network_profile {
-    network_plugin    = "kubenet"
+    network_plugin    = "azure"
+    network_policy    = "calico"
     load_balancer_sku = "standard"
   }
 }

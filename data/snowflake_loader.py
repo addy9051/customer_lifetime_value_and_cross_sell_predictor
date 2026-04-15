@@ -10,6 +10,7 @@ Usage:
 import argparse
 import logging
 import os
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -17,6 +18,40 @@ import snowflake.connector
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# SECURITY: Identifier allowlists to prevent SQL injection (VULN-003)
+# =============================================================================
+VALID_DATABASES = {"CLV_CROSS_SELL"}
+VALID_SCHEMAS = {"RAW", "STAGING", "FEATURES"}
+VALID_TABLES = {
+    "CORPORATE_ACCOUNTS", "SERVICE_CONTRACTS", "TRAVELER_PROFILES",
+    "BOOKINGS", "SUPPORT_TICKETS", "CLV_LABELS", "CSV_FORMAT",
+}
+
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def safe_identifier(name: str, valid_set: set | None = None) -> str:
+    """Validate and double-quote a Snowflake identifier to prevent SQL injection.
+
+    Args:
+        name: The raw identifier string.
+        valid_set: Optional allowlist. If provided, name must be in this set.
+
+    Returns:
+        A double-quoted, validated Snowflake identifier.
+
+    Raises:
+        ValueError: If the identifier fails validation.
+    """
+    stripped = name.strip().upper()
+    if valid_set and stripped not in valid_set:
+        raise ValueError(f"Invalid SQL identifier '{name}' — not in allowlist {valid_set}")
+    if not _IDENTIFIER_RE.match(stripped):
+        raise ValueError(f"Invalid SQL identifier format: '{name}'")
+    return f'"{stripped}"'
+
 
 # Table → CSV filename mapping
 TABLE_MAP = {
@@ -47,14 +82,20 @@ def load_table(cursor, data_dir: Path, database: str, schema: str, table_name: s
         logger.warning("Skipping %s — file not found: %s", table_name, csv_path)
         return
 
-    stage_name = f"@{database}.{schema}.%{table_name}"
-    full_table = f"{database}.{schema}.{table_name}"
+    # SECURITY: Validate all identifiers against allowlists (VULN-003)
+    db_id = safe_identifier(database, VALID_DATABASES)
+    schema_id = safe_identifier(schema, VALID_SCHEMAS)
+    table_id = safe_identifier(table_name, VALID_TABLES)
+
+    stage_name = f"@{db_id}.{schema_id}.%{table_id}"
+    full_table = f"{db_id}.{schema_id}.{table_id}"
+    format_name = f"{db_id}.{schema_id}.{safe_identifier('CSV_FORMAT', VALID_TABLES)}"
 
     logger.info("Loading %s → %s", csv_filename, full_table)
 
     # Create a file format for CSVs with headers
     cursor.execute(f"""
-        CREATE OR REPLACE FILE FORMAT {database}.{schema}.CSV_FORMAT
+        CREATE OR REPLACE FILE FORMAT {format_name}
             TYPE = 'CSV'
             FIELD_OPTIONALLY_ENCLOSED_BY = '"'
             SKIP_HEADER = 1
@@ -62,7 +103,7 @@ def load_table(cursor, data_dir: Path, database: str, schema: str, table_name: s
             EMPTY_FIELD_AS_NULL = TRUE
     """)
 
-    # PUT file to internal stage
+    # PUT file to internal stage — path is validated via Path object (no user input)
     put_sql = f"PUT 'file://{csv_path.as_posix()}' {stage_name} AUTO_COMPRESS=TRUE OVERWRITE=TRUE"
     cursor.execute(put_sql)
     logger.info("  → PUT complete")
@@ -74,7 +115,7 @@ def load_table(cursor, data_dir: Path, database: str, schema: str, table_name: s
     cursor.execute(f"""
         COPY INTO {full_table}
         FROM {stage_name}
-        FILE_FORMAT = (FORMAT_NAME = '{database}.{schema}.CSV_FORMAT')
+        FILE_FORMAT = (FORMAT_NAME = {format_name})
         ON_ERROR = 'CONTINUE'
     """)
 
@@ -134,11 +175,17 @@ def load_clv_labels(cursor, data_dir: Path, database: str):
         logger.warning("CLV labels not found — skipping")
         return
 
-    cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {database}.FEATURES")
+    # SECURITY: Validate identifiers (VULN-003)
+    db_id = safe_identifier(database, VALID_DATABASES)
+    features_id = safe_identifier("FEATURES", VALID_SCHEMAS)
+    labels_id = safe_identifier("CLV_LABELS", VALID_TABLES)
+    format_id = safe_identifier("CSV_FORMAT", VALID_TABLES)
 
-    stage_name = f"@{database}.FEATURES.%CLV_LABELS"
+    cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {db_id}.{features_id}")
+
+    stage_name = f"@{db_id}.{features_id}.%{labels_id}"
     cursor.execute(f"""
-        CREATE OR REPLACE FILE FORMAT {database}.FEATURES.CSV_FORMAT
+        CREATE OR REPLACE FILE FORMAT {db_id}.{features_id}.{format_id}
             TYPE = 'CSV'
             FIELD_OPTIONALLY_ENCLOSED_BY = '"'
             SKIP_HEADER = 1
@@ -146,17 +193,17 @@ def load_clv_labels(cursor, data_dir: Path, database: str):
     """)
 
     cursor.execute(f"PUT 'file://{csv_path.as_posix()}' {stage_name} AUTO_COMPRESS=TRUE OVERWRITE=TRUE")
-    cursor.execute(f"TRUNCATE TABLE IF EXISTS {database}.FEATURES.CLV_LABELS")
+    cursor.execute(f"TRUNCATE TABLE IF EXISTS {db_id}.{features_id}.{labels_id}")
     cursor.execute(f"""
-        COPY INTO {database}.FEATURES.CLV_LABELS
+        COPY INTO {db_id}.{features_id}.{labels_id}
         FROM {stage_name}
-        FILE_FORMAT = (FORMAT_NAME = '{database}.FEATURES.CSV_FORMAT')
+        FILE_FORMAT = (FORMAT_NAME = {db_id}.{features_id}.{format_id})
         ON_ERROR = 'CONTINUE'
     """)
 
-    cursor.execute(f"SELECT COUNT(*) FROM {database}.FEATURES.CLV_LABELS")
+    cursor.execute(f"SELECT COUNT(*) FROM {db_id}.{features_id}.{labels_id}")
     count = cursor.fetchone()[0]
-    logger.info("Loaded %d CLV labels into %s", count, f"{database}.FEATURES.CLV_LABELS")
+    logger.info("Loaded %d CLV labels into %s.%s.%s", count, db_id, features_id, labels_id)
 
 
 def main():

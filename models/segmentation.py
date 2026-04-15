@@ -248,50 +248,60 @@ def plot_segments(df: pd.DataFrame, embedding: np.ndarray, output_dir: Path):
     axes[1].set_ylabel("UMAP 2")
     plt.colorbar(scatter, ax=axes[1], label="log(CLV + 1)")
     axes[1].grid(alpha=0.2)
-
     plt.tight_layout()
-    plt.savefig(output_dir / "segment_umap.png", dpi=150, bbox_inches="tight")
+    plt.savefig(str(output_dir / "segment_umap.png"), dpi=150, bbox_inches="tight")
+    logger.info("Segment visualizations saved")
     plt.close()
 
-    logger.info("  → Segment visualizations saved")
+def _setup_mlflow_local(experiment_name):
+    """Helper to configure MLflow for local tracking, clearing Databricks env."""
+    import os
+    import mlflow
+    saved_host = os.environ.pop("DATABRICKS_HOST", None)
+    saved_token = os.environ.pop("DATABRICKS_TOKEN", None)
+    try:
+        tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+        mlflow.set_tracking_uri(tracking_uri)
+        mlflow.set_experiment(experiment_name)
+    finally:
+        if saved_host:
+            os.environ["DATABRICKS_HOST"] = saved_host
+        if saved_token:
+            os.environ["DATABRICKS_TOKEN"] = saved_token
 
 
-def log_to_mlflow(clusterer, metrics, params, model_name, output_dir):
-    """Log segmentation experiment to MLflow (Local or Remote Databricks)."""
+def log_to_mlflow(model, cluster_metrics, params, model_name, output_dir):
+    """Log segmentation experiment to MLflow."""
     try:
         import os
-
         import mlflow
 
         if os.environ.get("DATABRICKS_HOST"):
-            logger.info("Remote Databricks environment detected. Configuring MLFlow tracking...")
             mlflow.set_tracking_uri("databricks")
-
-            user_email = os.environ.get("DATABRICKS_USER_EMAIL", "amex-gbt-dev")
-            experiment_path = f"/Users/{user_email}/client_segmentation/{model_name}"
-            mlflow.set_experiment(experiment_path)
+            try:
+                experiment_path = f"/Shared/client_segmentation/{model_name}"
+                mlflow.set_experiment(experiment_path)
+            except Exception:
+                logger.info("Databricks experiment not available, falling back to local MLflow")
+                _setup_mlflow_local("Client-Segmentation")
         else:
-            mlflow.set_experiment("Client-Segmentation")
+            _setup_mlflow_local("Client-Segmentation")
 
-    except ImportError:
-        logger.warning("MLflow not installed — skipping experiment logging")
-        return
-
-    try:
         with mlflow.start_run(run_name=model_name):
             mlflow.log_params(params)
-            mlflow.log_metrics(metrics)
+            mlflow.log_metrics(cluster_metrics)
 
-            # Log UMAP visualization and metrics artifact
-            mlflow.log_artifact(str(output_dir / "segment_umap.png"), artifact_path="plots")
-            mlflow.log_artifact(str(output_dir / "cluster_metrics.csv"), artifact_path="data")
-            mlflow.log_artifact(str(output_dir / "account_segments.parquet"), artifact_path="data")
+            for plot_file in output_dir.glob("segment_*.png"):
+                mlflow.log_artifact(str(plot_file), artifact_path="plots")
 
-            # Log the models
-            mlflow.log_artifact(str(output_dir / "umap_reducer.joblib"), artifact_path="model")
-            mlflow.log_artifact(str(output_dir / "hdbscan_clusterer.joblib"), artifact_path="model")
+            summary_path = output_dir / "segment_summary.csv"
+            if summary_path.exists():
+                mlflow.log_artifact(str(summary_path), artifact_path="evaluation")
 
-            logger.info("  → Successfully logged to MLflow: run=%s", model_name)
+            logger.info("Successfully logged to MLflow: run=%s", model_name)
+
+    except ImportError:
+        logger.warning("MLflow not installed - skipping experiment logging")
     except Exception as e:
         logger.warning("MLflow logging failed: %s", e)
 

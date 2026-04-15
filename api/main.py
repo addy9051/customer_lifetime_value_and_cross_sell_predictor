@@ -13,6 +13,7 @@ Endpoints:
     GET  /segments/summary      → Aggregate segment statistics
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -22,8 +23,9 @@ import joblib
 import mlflow
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 try:
@@ -32,6 +34,22 @@ try:
     HAS_PROMETHEUS = True
 except ImportError:
     HAS_PROMETHEUS = False
+
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.util import get_remote_address
+
+    HAS_SLOWAPI = True
+except ImportError:
+    HAS_SLOWAPI = False
+
+try:
+    import jwt as pyjwt
+
+    HAS_JWT = True
+except ImportError:
+    HAS_JWT = False
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -43,19 +61,70 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="CLV & Cross-Sell Predictor API",
     description="Amex GBT Corporate Travel — Customer Lifetime Value & Cross-Sell Intelligence",
-    version="1.0.0",
+    version="1.1.0",
 )
+
+# SECURITY: Restrict CORS to known origins only (VULN-005)
+ALLOWED_ORIGINS = os.environ.get(
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:8501,http://dashboard:8501,https://dashboard.amexgbt.internal",
+).split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
+
+# SECURITY: Rate limiting (VULN-011)
+if HAS_SLOWAPI:
+    limiter = Limiter(key_func=get_remote_address)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 if HAS_PROMETHEUS:
     Instrumentator().instrument(app).expose(app)
+
+# =============================================================================
+# Authentication (VULN-010)
+# =============================================================================
+
+# JWT secret for API auth — in production, source from Azure Key Vault
+API_SECRET_KEY = os.environ.get("API_SECRET_KEY", "")
+API_AUTH_ENABLED = bool(API_SECRET_KEY)
+security = HTTPBearer(auto_error=False)
+
+
+async def verify_token(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> dict | None:
+    """Verify JWT bearer token if API_SECRET_KEY is configured.
+
+    When API_SECRET_KEY is not set, auth is disabled (local dev mode).
+    In production, always set API_SECRET_KEY to enforce authentication.
+    """
+    if not API_AUTH_ENABLED:
+        return {"sub": "anonymous", "role": "admin"}
+
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+
+    if not HAS_JWT:
+        raise HTTPException(status_code=500, detail="PyJWT not installed — cannot verify tokens")
+
+    try:
+        payload = pyjwt.decode(
+            credentials.credentials,
+            API_SECRET_KEY,
+            algorithms=["HS256"],
+        )
+        return payload
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except pyjwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 # =============================================================================
 # Model & Data Loading
@@ -67,6 +136,41 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", "data"))
 # Global model store
 models = {}
 data_store = {}
+
+
+def _verify_artifact_integrity(path: Path) -> bool:
+    """Verify SHA-256 hash of a model artifact before loading (VULN-006).
+
+    Checks against a checksums file at ARTIFACTS_DIR/artifact_checksums.json.
+    If no checksums file exists, logs a warning and allows loading (dev mode).
+    """
+    checksums_path = ARTIFACTS_DIR / "artifact_checksums.json"
+    if not checksums_path.exists():
+        logger.warning("SECURITY: No artifact_checksums.json found — skipping integrity check for %s", path.name)
+        return True
+
+    try:
+        checksums = json.loads(checksums_path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        logger.error("SECURITY: Failed to read checksums file: %s", e)
+        return False
+
+    relative_key = str(path.relative_to(ARTIFACTS_DIR)).replace("\\", "/")
+    expected_hash = checksums.get(relative_key)
+    if not expected_hash:
+        logger.warning("SECURITY: No checksum entry for %s — artifact not verified", relative_key)
+        return True  # Allow in dev; in production, return False
+
+    actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual_hash != expected_hash:
+        logger.error(
+            "SECURITY: Artifact integrity check FAILED for %s! Expected=%s, Got=%s",
+            relative_key, expected_hash, actual_hash,
+        )
+        return False
+
+    logger.info("Artifact integrity verified: %s", relative_key)
+    return True
 
 
 def load_models():
@@ -99,8 +203,11 @@ def load_models():
         # CLV model
         clv_path = ARTIFACTS_DIR / "clv" / "xgb_clv_model.joblib"
         if clv_path.exists():
-            models["clv"] = joblib.load(clv_path)
-            logger.info("Loaded CLV model locally")
+            if not _verify_artifact_integrity(clv_path):
+                logger.error("SECURITY: Refusing to load CLV model — integrity check failed")
+            else:
+                models["clv"] = joblib.load(clv_path)
+                logger.info("Loaded CLV model locally")
 
             features_path = ARTIFACTS_DIR / "clv" / "feature_columns.json"
             if features_path.exists():
@@ -109,18 +216,26 @@ def load_models():
 
         # Survival model
         survival_path = ARTIFACTS_DIR / "survival" / "cox_ph_model.joblib"
+        scaler_path = ARTIFACTS_DIR / "survival" / "survival_scaler.joblib"
         if survival_path.exists():
-            models["survival"] = joblib.load(survival_path)
-            models["survival_scaler"] = joblib.load(ARTIFACTS_DIR / "survival" / "survival_scaler.joblib")
-            logger.info("Loaded survival model locally")
+            if not _verify_artifact_integrity(survival_path):
+                logger.error("SECURITY: Refusing to load survival model — integrity check failed")
+            else:
+                models["survival"] = joblib.load(survival_path)
+                if scaler_path.exists() and _verify_artifact_integrity(scaler_path):
+                    models["survival_scaler"] = joblib.load(scaler_path)
+                logger.info("Loaded survival model locally")
 
         # Cross-sell model
         xs_path = ARTIFACTS_DIR / "cross_sell" / "cross_sell_model.joblib"
         if xs_path.exists():
-            models["cross_sell"] = joblib.load(xs_path)
-            with open(ARTIFACTS_DIR / "cross_sell" / "feature_columns.json") as f:
-                models["cross_sell_features"] = json.load(f)
-            logger.info("Loaded cross-sell model locally")
+            if not _verify_artifact_integrity(xs_path):
+                logger.error("SECURITY: Refusing to load cross-sell model — integrity check failed")
+            else:
+                models["cross_sell"] = joblib.load(xs_path)
+                with open(ARTIFACTS_DIR / "cross_sell" / "feature_columns.json") as f:
+                    models["cross_sell_features"] = json.load(f)
+                logger.info("Loaded cross-sell model locally")
 
     # Segmentation
     seg_path = ARTIFACTS_DIR / "segmentation" / "account_segments.parquet"
@@ -238,7 +353,7 @@ async def health():
 
 
 @app.post("/predict/clv", response_model=CLVResponse)
-async def predict_clv(request: CLVRequest):
+async def predict_clv(request: CLVRequest, _user: dict = Depends(verify_token)):
     if "features" not in data_store or "clv" not in models:
         raise HTTPException(status_code=503, detail="CLV model not loaded")
 
@@ -283,7 +398,7 @@ async def predict_clv(request: CLVRequest):
 
 
 @app.post("/predict/churn", response_model=ChurnResponse)
-async def predict_churn(request: ChurnRequest):
+async def predict_churn(request: ChurnRequest, _user: dict = Depends(verify_token)):
     if "churn_risk" not in data_store:
         raise HTTPException(status_code=503, detail="Churn model not loaded")
 
@@ -309,7 +424,7 @@ async def predict_churn(request: ChurnRequest):
 
 
 @app.post("/predict/cross-sell", response_model=CrossSellResponse)
-async def predict_cross_sell(request: CrossSellRequest):
+async def predict_cross_sell(request: CrossSellRequest, _user: dict = Depends(verify_token)):
     if "recommendations" not in data_store or "cross_sell_proba" not in data_store:
         raise HTTPException(status_code=503, detail="Cross-sell model not loaded")
 
@@ -351,7 +466,7 @@ async def predict_cross_sell(request: CrossSellRequest):
 
 
 @app.get("/accounts/{account_id}", response_model=AccountProfile)
-async def get_account_profile(account_id: str):
+async def get_account_profile(account_id: str, _user: dict = Depends(verify_token)):
     """Full account profile — CLV + churn + segment + recommendations."""
     if "features" not in data_store:
         raise HTTPException(status_code=503, detail="Features not loaded")
@@ -418,7 +533,7 @@ async def get_account_profile(account_id: str):
 
 
 @app.get("/segments/summary")
-async def segment_summary():
+async def segment_summary(_user: dict = Depends(verify_token)):
     """Aggregate segment statistics."""
     if "segments" not in data_store or "features" not in data_store:
         raise HTTPException(status_code=503, detail="Segment data not loaded")
@@ -446,12 +561,17 @@ async def segment_summary():
     return summary.to_dict(orient="records")
 
 
+# SECURITY: Maximum pagination limit to prevent full data dumps (VULN-012)
+MAX_PAGE_LIMIT = 100
+
+
 @app.get("/accounts")
 async def list_accounts(
     tier: str | None = None,
     segment: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(default=50, ge=1, le=MAX_PAGE_LIMIT, description="Max results per page (capped at 100)"),
+    offset: int = Query(default=0, ge=0, description="Pagination offset"),
+    _user: dict = Depends(verify_token),
 ):
     """List accounts with optional filtering."""
     if "features" not in data_store:

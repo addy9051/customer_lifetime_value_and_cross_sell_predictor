@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # -------------------------------------------------------
   # MLflow Tracking Server
@@ -84,8 +82,10 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # SECURITY: Password sourced from .env, not hardcoded (VULN-008, VULN-013)
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-changeme}
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
     volumes:
       - grafana_data:/var/lib/grafana
     depends_on:
@@ -99,9 +99,10 @@ services:
     image: postgres:13
     container_name: clv-postgres
     environment:
-      - POSTGRES_USER=airflow
-      - POSTGRES_PASSWORD=airflow
-      - POSTGRES_DB=airflow
+      # SECURITY: Credentials sourced from .env variables (VULN-008)
+      - POSTGRES_USER=${AIRFLOW_POSTGRES_USER:-airflow}
+      - POSTGRES_PASSWORD=${AIRFLOW_POSTGRES_PASSWORD:?Set AIRFLOW_POSTGRES_PASSWORD in .env}
+      - POSTGRES_DB=${AIRFLOW_POSTGRES_DB:-airflow}
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U airflow" ]
       interval: 10s
@@ -131,15 +132,26 @@ services:
         condition: service_healthy
     environment:
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
-      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@postgres/airflow
+      # SECURITY: Use env var references for DB credentials (VULN-008)
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:?err}@postgres/${AIRFLOW_POSTGRES_DB:-airflow}
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:?err}@postgres/${AIRFLOW_POSTGRES_DB:-airflow}
       - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/1
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - PYTHONPATH=/opt/airflow/project
-    env_file: .env
+      # SECURITY: Only inject specific secrets needed, not blanket .env (VULN-008)
+      - SNOWFLAKE_ACCOUNT=${SNOWFLAKE_ACCOUNT}
+      - SNOWFLAKE_USER=${SNOWFLAKE_USER}
+      - SNOWFLAKE_PASSWORD=${SNOWFLAKE_PASSWORD}
+      - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE}
+      - SNOWFLAKE_WAREHOUSE=${SNOWFLAKE_WAREHOUSE}
+      - DATABRICKS_HOST=${DATABRICKS_HOST}
+      - DATABRICKS_TOKEN=${DATABRICKS_TOKEN}
     volumes:
+      # SECURITY: Mount only dags/ and specific code dirs, NOT entire project (VULN-008)
       - ./airflow/dags:/opt/airflow/dags
-      - .:/opt/airflow/project
+      - ./models:/opt/airflow/project/models:ro
+      - ./features:/opt/airflow/project/features:ro
+      - ./data:/opt/airflow/project/data
     ports:
       - "8081:8080"
     command: webserver
@@ -157,14 +169,23 @@ services:
         condition: service_healthy
     environment:
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
-      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@postgres/airflow
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:?err}@postgres/${AIRFLOW_POSTGRES_DB:-airflow}
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:?err}@postgres/${AIRFLOW_POSTGRES_DB:-airflow}
       - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/1
       - PYTHONPATH=/opt/airflow/project
-    env_file: .env
+      - GIT_PYTHON_REFRESH=quiet
+      - SNOWFLAKE_ACCOUNT=${SNOWFLAKE_ACCOUNT}
+      - SNOWFLAKE_USER=${SNOWFLAKE_USER}
+      - SNOWFLAKE_PASSWORD=${SNOWFLAKE_PASSWORD}
+      - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE}
+      - SNOWFLAKE_WAREHOUSE=${SNOWFLAKE_WAREHOUSE}
+      - DATABRICKS_HOST=${DATABRICKS_HOST}
+      - DATABRICKS_TOKEN=${DATABRICKS_TOKEN}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
-      - .:/opt/airflow/project
+      - ./models:/opt/airflow/project/models:ro
+      - ./features:/opt/airflow/project/features:ro
+      - ./data:/opt/airflow/project/data
     command: scheduler
     restart: unless-stopped
 
@@ -180,14 +201,24 @@ services:
         condition: service_healthy
     environment:
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
-      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@postgres/airflow
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:?err}@postgres/${AIRFLOW_POSTGRES_DB:-airflow}
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:?err}@postgres/${AIRFLOW_POSTGRES_DB:-airflow}
       - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/1
       - PYTHONPATH=/opt/airflow/project
-    env_file: .env
+      - GIT_PYTHON_REFRESH=quiet
+      - MLFLOW_RECORD_ENV_VARS_IN_MODEL_LOGGING=false
+      - SNOWFLAKE_ACCOUNT=${SNOWFLAKE_ACCOUNT}
+      - SNOWFLAKE_USER=${SNOWFLAKE_USER}
+      - SNOWFLAKE_PASSWORD=${SNOWFLAKE_PASSWORD}
+      - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE}
+      - SNOWFLAKE_WAREHOUSE=${SNOWFLAKE_WAREHOUSE}
+      - DATABRICKS_HOST=${DATABRICKS_HOST}
+      - DATABRICKS_TOKEN=${DATABRICKS_TOKEN}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
-      - .:/opt/airflow/project
+      - ./models:/opt/airflow/project/models:ro
+      - ./features:/opt/airflow/project/features:ro
+      - ./data:/opt/airflow/project/data
     command: celery worker
     restart: unless-stopped
 
@@ -201,17 +232,27 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
-    command: db migrate && airflow users create --username admin --firstname admin --lastname admin --role Admin --email admin@example.com --password admin
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:?err}@postgres/${AIRFLOW_POSTGRES_DB:-airflow}
+    # SECURITY: Use env var for Airflow admin password (VULN-008)
+    command: >-
+      bash -c "airflow db migrate &&
+      airflow users create
+      --username admin
+      --firstname admin
+      --lastname admin
+      --role Admin
+      --email admin@example.com
+      --password $${AIRFLOW_ADMIN_PASSWORD:-changeme}"
     volumes:
-      - .:/opt/airflow/project
+      - ./airflow/dags:/opt/airflow/dags
 
   pgadmin:
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:8.4
     container_name: clv-pgadmin
     environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
-      - PGADMIN_DEFAULT_PASSWORD=admin
+      # SECURITY: Credentials from .env (VULN-008)
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@admin.com}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:?Set PGADMIN_PASSWORD in .env}
     ports:
       - "5050:80"
     depends_on:
