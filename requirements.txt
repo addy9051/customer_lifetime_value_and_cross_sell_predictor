@@ -12,7 +12,7 @@ xgboost==2.0.3
 lightgbm==4.3.0
 lifelines==0.29.0            # Survival analysis (Cox PH, Kaplan-Meier)
 shap==0.45.1                 # Model interpretability
-hdbscan==0.8.38              # Density-based clustering
+hdbscan>=0.8.39              # Density-based clustering
 umap-learn==0.5.6            # Dimensionality reduction
 optuna==3.6.1                # Hyperparameter tuning
 
