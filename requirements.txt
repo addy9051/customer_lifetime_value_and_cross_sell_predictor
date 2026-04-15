@@ -7,9 +7,9 @@
 # Core ML & Data
 pandas==2.2.3
 numpy==1.26.4
-scikit-learn==1.4.2
+scikit-learn==1.5.0
 xgboost==2.0.3
-lightgbm==4.3.0
+lightgbm==4.6.0
 lifelines==0.29.0            # Survival analysis (Cox PH, Kaplan-Meier)
 shap==0.45.1                 # Model interpretability
 hdbscan==0.8.39              # Density-based clustering
@@ -20,7 +20,7 @@ optuna==3.6.1                # Hyperparameter tuning
 faker==22.6.0                # Realistic synthetic data
 
 # Data Infrastructure
-snowflake-connector-python==3.7.1
+snowflake-connector-python==3.13.1
 snowflake-sqlalchemy==1.5.3
 python-dotenv==1.0.1
 sqlalchemy==1.4.52           # Pinned <2.0 for Snowflake compat
@@ -30,7 +30,7 @@ azureml-core==1.56.0
 azureml-mlflow==1.56.0
 
 # MLflow
-mlflow==2.12.2
+mlflow==3.11.1
 
 # API & Serving
 fastapi==0.111.0
@@ -39,7 +39,7 @@ pydantic==2.7.1
 httpx==0.27.0                # Async HTTP client for Streamlit → API calls
 
 # Dashboard
-streamlit==1.33.0
+streamlit==1.54.0
 plotly==5.22.0
 altair==5.3.0
 
@@ -51,12 +51,12 @@ prometheus-client==0.20.0
 prometheus-fastapi-instrumentator==6.1.0
 
 # Security — API auth & rate limiting (VULN-010, VULN-011)
-PyJWT==2.8.0
-cryptography==42.0.5
+PyJWT==2.12.0
+cryptography==46.0.6
 slowapi==0.1.9
 
 # Testing & Dev
-pytest==8.1.1
+pytest==9.0.3
 ruff==0.4.2
 
 # Security Scanning (dev only)
