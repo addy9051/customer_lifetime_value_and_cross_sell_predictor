@@ -20,6 +20,11 @@ jobs:
     name: Terraform Apply
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -33,16 +38,9 @@ jobs:
         working-directory: ./terraform
         run: terraform init
 
-      # Note: In a true prod secure environment, you should pass AZURE_CLIENT_ID, client_secret, tenant_id, subscription_id
-      # to terraform via ARM_* env variables stored in Github Secrets
       - name: 'Terraform Apply'
         working-directory: ./terraform
         run: terraform apply -auto-approve
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
   build-and-deploy:
     name: Build Docker & Deploy to AKS
