@@ -1,0 +1,12 @@
+# =============================================================================
+# Azure ML SDK v1 — Isolated dependencies (deprecated March 2025, EOL June 2026)
+#
+# These packages are separated from requirements.txt because azureml-core
+# hard-pins pyOpenSSL<25.0.0, which conflicts with the secure pyOpenSSL>=26
+# required by the main app stack.
+#
+# Plan: Migrate to azure-ai-ml (SDK v2) before the June 2026 EOL deadline.
+# =============================================================================
+
+azureml-core==1.56.0
+azureml-mlflow==1.56.0

@@ -25,9 +25,9 @@ snowflake-sqlalchemy==1.9.0
 python-dotenv==1.0.1
 sqlalchemy==1.4.52           # Pinned <2.0 for Snowflake compat
 
-# Azure ML
-azureml-core==1.56.0
-azureml-mlflow==1.56.0
+# Azure ML — SDK v1 (deprecated March 2025, EOL June 2026)
+# Moved to requirements-azureml-v1.txt to avoid pyOpenSSL<25 conflict.
+# Migrate to azure-ai-ml (SDK v2) before EOL.
 
 # MLflow
 mlflow==3.11.1
