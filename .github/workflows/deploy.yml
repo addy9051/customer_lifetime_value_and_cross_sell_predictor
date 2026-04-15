@@ -43,6 +43,10 @@ jobs:
         run: |
           terraform import azurerm_resource_group.ml_rg \
             /subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/amex-gbt-ml-rg || true
+          terraform import azurerm_container_registry.ml_acr \
+            /subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/amex-gbt-ml-rg/providers/Microsoft.ContainerRegistry/registries/amexgbtmlcontainers || true
+          terraform import azurerm_kubernetes_cluster.ml_aks \
+            /subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/amex-gbt-ml-rg/providers/Microsoft.ContainerService/managedClusters/amex-gbt-clv-aks || true
 
       - name: 'Terraform Apply'
         working-directory: ./terraform
