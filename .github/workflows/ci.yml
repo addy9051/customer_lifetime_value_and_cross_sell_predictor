@@ -211,7 +211,7 @@ jobs:
       - name: Verify non-root user (Airflow)
         shell: bash
         run: |
-          USER_NAME=$(docker run --rm clv-airflow:test whoami)
+          USER_NAME=$(docker run --rm --entrypoint whoami clv-airflow:test)
           if [ "$USER_NAME" = "root" ]; then
             echo "::error::Airflow container runs as root!"
             exit 1
