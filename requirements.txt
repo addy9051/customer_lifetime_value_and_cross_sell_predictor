@@ -20,8 +20,8 @@ optuna==3.6.1                # Hyperparameter tuning
 faker==22.6.0                # Realistic synthetic data
 
 # Data Infrastructure
-snowflake-connector-python==3.13.1
-snowflake-sqlalchemy==1.5.3
+# snowflake-connector-python==3.13.1
+snowflake-sqlalchemy==1.9.0
 python-dotenv==1.0.1
 sqlalchemy==1.4.52           # Pinned <2.0 for Snowflake compat
 
