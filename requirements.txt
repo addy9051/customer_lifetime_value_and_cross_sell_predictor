@@ -53,6 +53,7 @@ prometheus-fastapi-instrumentator==6.1.0
 # Security — API auth & rate limiting (VULN-010, VULN-011)
 PyJWT==2.12.0
 cryptography==46.0.7
+pyOpenSSL==26.0.0
 slowapi==0.1.9
 
 # Testing & Dev

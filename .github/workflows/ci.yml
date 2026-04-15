@@ -60,6 +60,12 @@ jobs:
           python -m pip show snowflake-connector-python
           python -m pip show cryptography
           python -m pip freeze | grep -Ei "pyopenssl|snowflake|cryptography|fastapi|starlette"
+          
+      - name: Debug security package versions
+        run: |
+          python -m pip show pyOpenSSL
+          python -m pip show snowflake-connector-python
+          python -m pip freeze | grep -Ei "pyopenssl|snowflake|cryptography"
 
       - name: pip-audit (CVE scan)
         run: python -m pip_audit --strict --desc
