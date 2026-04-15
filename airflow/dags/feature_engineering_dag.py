@@ -23,14 +23,14 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=5),
 }
-
-PROJECT_ROOT = "/opt/airflow/project"
+import os
+PROJECT_ROOT = os.getenv("PROJECT_ROOT", "/opt/airflow/project")
 
 dag = DAG(
     dag_id="feature_engineering_pipeline",
     default_args=default_args,
     description="Compute ML features from raw data → write to feature store",
-    schedule_interval=None,
+    schedule=None,
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["clv", "feature-engineering", "ml"],
