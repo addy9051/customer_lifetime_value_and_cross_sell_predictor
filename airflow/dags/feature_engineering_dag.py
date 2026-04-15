@@ -11,7 +11,7 @@ Schedule: Runs after data_ingestion_pipeline completes.
 """
 
 from datetime import datetime, timedelta
-
+import os
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
@@ -23,7 +23,8 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=5),
 }
-import os
+
+
 PROJECT_ROOT = os.getenv("PROJECT_ROOT", "/opt/airflow/project")
 
 dag = DAG(
