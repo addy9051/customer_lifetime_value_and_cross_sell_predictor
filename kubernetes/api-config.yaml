@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clv-api-config
+  namespace: amex-gbt-ml
+data:
+  # SECURITY: Non-sensitive configuration only — credentials are in K8s Secrets
+  # (clv-databricks-secrets) managed by deploy.yml CI/CD pipeline.
+  # Snowflake account/user identifiers moved to Secrets for defense-in-depth.
+  MLFLOW_TRACKING_URI: "databricks"
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
