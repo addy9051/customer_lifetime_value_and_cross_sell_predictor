@@ -78,8 +78,12 @@ resource "azurerm_kubernetes_cluster" "ml_aks" {
 
 # =============================================================================
 # Role Assignment (Allow AKS to pull images from ACR)
+# Requires Owner or User Access Administrator role on the SP.
+# If your SP only has Contributor, set manage_acr_role = false and run once:
+#   az aks update -n amex-gbt-clv-aks -g amex-gbt-ml-rg --attach-acr amexgbtmlcontainers
 # =============================================================================
 resource "azurerm_role_assignment" "aks_to_acr" {
+  count                            = var.manage_acr_role ? 1 : 0
   principal_id                     = azurerm_kubernetes_cluster.ml_aks.kubelet_identity[0].object_id
   role_definition_name             = "AcrPull"
   scope                            = azurerm_container_registry.ml_acr.id

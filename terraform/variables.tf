@@ -33,3 +33,9 @@ variable "vm_size" {
   type        = string
   default     = "Standard_D2s_v3" # Explicitly listed as available in Central US
 }
+
+variable "manage_acr_role" {
+  description = "Whether Terraform manages the AKS→ACR pull role assignment. Requires Owner/User Access Administrator. Set false if your SP only has Contributor."
+  type        = bool
+  default     = false
+}
