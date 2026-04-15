@@ -7,18 +7,16 @@ terraform {
   }
 
   # SECURITY: Remote backend — prevents tfstate (containing secrets) from local storage or Git commits.
-  # To enable, first create the storage account with the bootstrap commands below, then uncomment:
-  #
+  # Bootstrap (already done):
   #   az group create --name amex-gbt-ml-rg --location centralus
   #   az storage account create --name amexgbttfstate --resource-group amex-gbt-ml-rg --sku Standard_LRS
   #   az storage container create --name tfstate --account-name amexgbttfstate
-  #
-  # backend "azurerm" {
-  #   resource_group_name  = "amex-gbt-ml-rg"
-  #   storage_account_name = "amexgbttfstate"
-  #   container_name       = "tfstate"
-  #   key                  = "clv-predictor.tfstate"
-  # }
+  backend "azurerm" {
+    resource_group_name  = "amex-gbt-ml-rg"
+    storage_account_name = "amexgbttfstate"
+    container_name       = "tfstate"
+    key                  = "clv-predictor.tfstate"
+  }
 }
 
 provider "azurerm" {

@@ -38,6 +38,12 @@ jobs:
         working-directory: ./terraform
         run: terraform init
 
+      - name: Import existing resources (idempotent)
+        working-directory: ./terraform
+        run: |
+          terraform import azurerm_resource_group.ml_rg \
+            /subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/amex-gbt-ml-rg || true
+
       - name: 'Terraform Apply'
         working-directory: ./terraform
         run: terraform apply -auto-approve
