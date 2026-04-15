@@ -23,7 +23,7 @@ import joblib
 import mlflow
 import numpy as np
 import pandas as pd
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
@@ -126,6 +126,7 @@ async def verify_token(
     except pyjwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+
 # =============================================================================
 # Model & Data Loading
 # =============================================================================
@@ -165,7 +166,9 @@ def _verify_artifact_integrity(path: Path) -> bool:
     if actual_hash != expected_hash:
         logger.error(
             "SECURITY: Artifact integrity check FAILED for %s! Expected=%s, Got=%s",
-            relative_key, expected_hash, actual_hash,
+            relative_key,
+            expected_hash,
+            actual_hash,
         )
         return False
 

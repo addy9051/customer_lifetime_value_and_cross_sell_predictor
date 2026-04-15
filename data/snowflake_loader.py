@@ -12,9 +12,9 @@ import logging
 import os
 import re
 from pathlib import Path
-from dotenv import load_dotenv
 
 import snowflake.connector
+from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -25,8 +25,13 @@ logger = logging.getLogger(__name__)
 VALID_DATABASES = {"CLV_CROSS_SELL"}
 VALID_SCHEMAS = {"RAW", "STAGING", "FEATURES"}
 VALID_TABLES = {
-    "CORPORATE_ACCOUNTS", "SERVICE_CONTRACTS", "TRAVELER_PROFILES",
-    "BOOKINGS", "SUPPORT_TICKETS", "CLV_LABELS", "CSV_FORMAT",
+    "CORPORATE_ACCOUNTS",
+    "SERVICE_CONTRACTS",
+    "TRAVELER_PROFILES",
+    "BOOKINGS",
+    "SUPPORT_TICKETS",
+    "CLV_LABELS",
+    "CSV_FORMAT",
 }
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -209,7 +214,7 @@ def load_clv_labels(cursor, data_dir: Path, database: str):
 def main():
     # Load environment variables from .env file
     load_dotenv()
-
+    database = os.environ.get("SNOWFLAKE_DATABASE", "CLV_CROSS_SELL")
     parser = argparse.ArgumentParser(description="Load synthetic data into Snowflake")
     parser.add_argument("--data-dir", type=str, default="data/synthetic", help="Directory containing CSV files")
     parser.add_argument("--skip-staging", action="store_true", help="Skip staging transformations")
@@ -234,13 +239,14 @@ def main():
                 conn.execute_string(ddl_content)
                 logger.info("  → DDL execution successful")
             except Exception as e:
-                logger.error("DDL execution failed. If the database already exists, this might be safe. Error: %s", str(e))
+                logger.error(
+                    "DDL execution failed. If the database already exists, this might be safe. Error: %s", str(e)
+                )
         else:
             logger.warning("DDL file NOT found at %s. Creating RAW schema manually.", ddl_path)
             cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {database}.RAW")
 
         # 2. Load RAW data into the now-active database context
-        database = os.environ.get("SNOWFLAKE_DATABASE", "CLV_CROSS_SELL")
         for table_name, csv_file in TABLE_MAP.items():
             load_table(cursor, data_dir, database, "RAW", table_name, csv_file)
 

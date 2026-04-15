@@ -226,7 +226,9 @@ def predict_churn_risk(cph, survival_df: pd.DataFrame, output_dir: Path):
 def _setup_mlflow_local(experiment_name):
     """Helper to configure MLflow for local tracking, clearing Databricks env."""
     import os
+
     import mlflow
+
     saved_host = os.environ.pop("DATABRICKS_HOST", None)
     saved_token = os.environ.pop("DATABRICKS_TOKEN", None)
     try:
@@ -244,6 +246,7 @@ def log_to_mlflow(model, metrics, params, model_name, output_dir):
     """Log survival model experiment to MLflow."""
     try:
         import os
+
         import mlflow
 
         if os.environ.get("DATABRICKS_HOST"):

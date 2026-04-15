@@ -262,7 +262,9 @@ def generate_recommendations(
 def _setup_mlflow_local(experiment_name):
     """Helper to configure MLflow for local tracking, clearing Databricks env."""
     import os
+
     import mlflow
+
     saved_host = os.environ.pop("DATABRICKS_HOST", None)
     saved_token = os.environ.pop("DATABRICKS_TOKEN", None)
     try:
@@ -280,6 +282,7 @@ def log_to_mlflow(model, metrics_df, params, model_name, output_dir, input_examp
     """Log experiment to MLflow."""
     try:
         import os
+
         import mlflow
         import mlflow.sklearn
 
@@ -287,13 +290,11 @@ def log_to_mlflow(model, metrics_df, params, model_name, output_dir, input_examp
         if input_example is not None:
             input_example = input_example.astype("float64")
 
-        use_databricks = False
         if os.environ.get("DATABRICKS_HOST"):
             mlflow.set_tracking_uri("databricks")
             try:
                 experiment_path = f"/Shared/cross_sell_propensity/{model_name}"
                 mlflow.set_experiment(experiment_path)
-                use_databricks = True
             except Exception:
                 logger.info("Databricks experiment not available, falling back to local MLflow")
                 _setup_mlflow_local("Cross-Sell-Propensity")

@@ -266,8 +266,8 @@ def generate_shap_explanations(model, X_test, output_dir: Path):
 
 def _setup_mlflow_local(experiment_name):
     """Helper to configure MLflow for local tracking, clearing Databricks env."""
-    import os
     import mlflow
+
     saved_host = os.environ.pop("DATABRICKS_HOST", None)
     saved_token = os.environ.pop("DATABRICKS_TOKEN", None)
     try:
@@ -284,23 +284,22 @@ def _setup_mlflow_local(experiment_name):
 def log_to_mlflow(model, metrics, params, model_name, output_dir, input_example=None):
     """Log CLV experiment to MLflow."""
     try:
+        import os
         import warnings
+
         import mlflow
         import mlflow.lightgbm
         import mlflow.xgboost
-        import os
 
         # Cast input_example to float64 to avoid MLflow integer-column warning
         if input_example is not None:
             input_example = input_example.astype("float64")
 
-        use_databricks = False
         if os.environ.get("DATABRICKS_HOST"):
             mlflow.set_tracking_uri("databricks")
             try:
                 experiment_path = f"/Shared/clv_prediction/{model_name}"
                 mlflow.set_experiment(experiment_path)
-                use_databricks = True
             except Exception:
                 logger.info("Databricks experiment not available, falling back to local MLflow")
                 _setup_mlflow_local("CLV-Prediction")
@@ -369,7 +368,14 @@ def main():
     generate_shap_explanations(xgb_model, X_test, output_dir)
 
     # MLflow logging
-    log_to_mlflow(xgb_model, xgb_metrics, xgb_params, "XGBoost-CLV", output_dir, input_example=X_test.head(5))
+    log_to_mlflow(
+        xgb_model,
+        xgb_metrics,
+        xgb_params,
+        "XGBoost-CLV",
+        output_dir,
+        input_example=X_test.head(5),
+    )
 
     # Feature importance
     importance = pd.DataFrame(
@@ -389,7 +395,9 @@ def main():
             lgbm_model, lgbm_params = train_lightgbm(X_train, y_train, X_val, y_val)
             lgbm_metrics = evaluate_model(lgbm_model, X_test, y_test, "LightGBM-CLV")
             joblib.dump(lgbm_model, output_dir / "lgbm_clv_model.joblib")
-            log_to_mlflow(lgbm_model, lgbm_metrics, lgbm_params, "LightGBM-CLV", output_dir, input_example=X_test.head(5))
+            log_to_mlflow(
+                lgbm_model, lgbm_metrics, lgbm_params, "LightGBM-CLV", output_dir, input_example=X_test.head(5)
+            )
             all_metrics.append(lgbm_metrics)
         except ImportError:
             logger.warning("LightGBM not installed — skipping benchmark")

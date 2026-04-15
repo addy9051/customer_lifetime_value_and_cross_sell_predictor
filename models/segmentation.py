@@ -253,10 +253,13 @@ def plot_segments(df: pd.DataFrame, embedding: np.ndarray, output_dir: Path):
     logger.info("Segment visualizations saved")
     plt.close()
 
+
 def _setup_mlflow_local(experiment_name):
     """Helper to configure MLflow for local tracking, clearing Databricks env."""
     import os
+
     import mlflow
+
     saved_host = os.environ.pop("DATABRICKS_HOST", None)
     saved_token = os.environ.pop("DATABRICKS_TOKEN", None)
     try:
@@ -274,6 +277,7 @@ def log_to_mlflow(model, cluster_metrics, params, model_name, output_dir):
     """Log segmentation experiment to MLflow."""
     try:
         import os
+
         import mlflow
 
         if os.environ.get("DATABRICKS_HOST"):

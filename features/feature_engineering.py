@@ -20,11 +20,11 @@ import logging
 import os
 from pathlib import Path
 from urllib.parse import quote_plus
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
 
 import numpy as np
 import pandas as pd
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -93,8 +93,7 @@ def get_snowflake_engine():
     # Construct SQLAlchemy connection string with URL-encoded password
     encoded_password = quote_plus(password)
     connection_url = (
-        f"snowflake://{user}:{encoded_password}@{account}/{database}/STAGING"
-        f"?warehouse={warehouse}&role={role}"
+        f"snowflake://{user}:{encoded_password}@{account}/{database}/STAGING?warehouse={warehouse}&role={role}"
     )
     return create_engine(connection_url)
 
@@ -108,6 +107,7 @@ def load_data_snowflake(schema: str = "STAGING") -> dict:
 
     # SECURITY: Allowlist of valid table names to prevent SQL injection (VULN-003)
     import re
+
     _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
     VALID_SCHEMAS = {"RAW", "STAGING", "FEATURES"}
 
@@ -248,9 +248,7 @@ def compute_trajectory_features(bookings: pd.DataFrame, travelers: pd.DataFrame)
             return 0.0
         return float(((x - x_mean) * (y - y_mean)).sum() / denom)
 
-    volume_trend = (
-        monthly_counts.groupby("account_id").apply(_slope).rename("booking_volume_trend")
-    )
+    volume_trend = monthly_counts.groupby("account_id").apply(_slope).rename("booking_volume_trend")
     features["booking_volume_trend"] = volume_trend
 
     # Monthly spend trend
@@ -332,9 +330,7 @@ def compute_service_features(contracts: pd.DataFrame) -> pd.DataFrame:
         entropy = -np.sum(p * np.log2(p + 1e-10))
         return entropy / max_entropy if max_entropy > 0 else 0
 
-    diversity = (
-        active.groupby("account_id").apply(_product_diversity).rename("product_diversity_score")
-    )
+    diversity = active.groupby("account_id").apply(_product_diversity).rename("product_diversity_score")
     features["product_diversity_score"] = diversity
 
     # Total active contract value
@@ -430,9 +426,7 @@ def compute_support_features(tickets: pd.DataFrame) -> pd.DataFrame:
         return p.max()  # Herfindahl-style: 1.0 = all same category
 
     features["ticket_category_concentration"] = (
-        hist.groupby("account_id")
-        .apply(_category_concentration)
-        .rename("ticket_category_concentration")
+        hist.groupby("account_id").apply(_category_concentration).rename("ticket_category_concentration")
     )
 
     support = pd.DataFrame(features)
