@@ -33,7 +33,7 @@ azureml-mlflow==1.56.0
 mlflow==3.11.1
 
 # API & Serving
-fastapi==0.111.0
+fastapi==0.135.3
 uvicorn[standard]==0.29.0
 pydantic==2.7.1
 httpx==0.27.0                # Async HTTP client for Streamlit → API calls
@@ -52,7 +52,7 @@ prometheus-fastapi-instrumentator==6.1.0
 
 # Security — API auth & rate limiting (VULN-010, VULN-011)
 PyJWT==2.12.0
-cryptography==46.0.6
+cryptography==46.0.7
 slowapi==0.1.9
 
 # Testing & Dev

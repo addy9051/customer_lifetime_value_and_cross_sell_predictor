@@ -53,6 +53,13 @@ jobs:
 
       - name: Check dependency consistency
         run: python -m pip check
+      
+      - name: Debug resolved package versions
+        run: |
+          python -m pip show pyOpenSSL
+          python -m pip show snowflake-connector-python
+          python -m pip show cryptography
+          python -m pip freeze | grep -Ei "pyopenssl|snowflake|cryptography|fastapi|starlette"
 
       - name: pip-audit (CVE scan)
         run: python -m pip_audit --strict --desc
