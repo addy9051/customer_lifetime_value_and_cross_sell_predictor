@@ -59,3 +59,10 @@ crash.*.log
 kubernetes/clv-secrets.yaml
 kubernetes/*-secrets.yaml
 !kubernetes/*.yaml.template
+
+# dbt
+data/dbt/target/
+data/dbt/dbt_packages/
+data/dbt/logs/
+data/dbt/.user.yml
+data/dbt/profiles.yml

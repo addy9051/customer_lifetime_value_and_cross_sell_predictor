@@ -32,6 +32,8 @@ VALID_TABLES = {
     "SUPPORT_TICKETS",
     "CLV_LABELS",
     "CSV_FORMAT",
+    "CHURN_PREDICTIONS",
+    "CROSS_SELL_RECOMMENDATIONS",
 }
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -211,6 +213,22 @@ def load_clv_labels(cursor, data_dir: Path, database: str):
     logger.info("Loaded %d CLV labels into %s.%s.%s", count, db_id, features_id, labels_id)
 
 
+def load_ml_artifacts(cursor, database: str):
+    """Load latest ML artifacts directly to Snowflake RAW schema."""
+    ml_base_dir = Path(__file__).parent.parent / "models" / "artifacts"
+    
+    ml_tables = {
+        "CHURN_PREDICTIONS": ml_base_dir / "survival" / "churn_risk_predictions.csv",
+        "CROSS_SELL_RECOMMENDATIONS": ml_base_dir / "cross_sell" / "account_recommendations.csv",
+    }
+    
+    for table_name, csv_path in ml_tables.items():
+        if csv_path.exists():
+            load_table(cursor, csv_path.parent, database, "RAW", table_name, csv_path.name)
+        else:
+            logger.warning("ML artifact not found: %s", csv_path)
+
+
 def main():
     # Load environment variables from .env file
     load_dotenv()
@@ -256,6 +274,9 @@ def main():
 
         # 4. Load CLV labels
         load_clv_labels(cursor, data_dir, database)
+
+        # 5. Load Predictive ML Artifacts into RAW
+        load_ml_artifacts(cursor, database)
 
         logger.info("=" * 60)
         logger.info("DATA LOAD COMPLETE")

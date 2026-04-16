@@ -10,3 +10,5 @@ sources:
       - name: traveler_profiles
       - name: bookings
       - name: support_tickets
+      - name: churn_predictions
+      - name: cross_sell_recommendations

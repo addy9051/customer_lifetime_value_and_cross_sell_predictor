@@ -76,6 +76,26 @@ CREATE OR REPLACE TABLE RAW.SUPPORT_TICKETS (
     resolution_hours    NUMBER(8,2)
 );
 
+CREATE OR REPLACE TABLE RAW.CHURN_PREDICTIONS (
+    account_id              VARCHAR(10)     PRIMARY KEY,
+    survival_prob_30d       FLOAT,
+    survival_prob_90d       FLOAT,
+    survival_prob_180d      FLOAT,
+    survival_prob_365d      FLOAT,
+    churn_risk_score        FLOAT,
+    partial_hazard          FLOAT,
+    expected_lifetime_days  FLOAT
+);
+
+CREATE OR REPLACE TABLE RAW.CROSS_SELL_RECOMMENDATIONS (
+    account_id              VARCHAR(10)     PRIMARY KEY,
+    top_1_product           VARCHAR(50),
+    top_1_score             FLOAT,
+    top_2_product           VARCHAR(50),
+    top_2_score             FLOAT,
+    num_products_current    INTEGER
+);
+
 -- -------------------------------------------------------
 -- STAGING Schema — cleansed, with derived helper columns
 -- -------------------------------------------------------

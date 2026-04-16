@@ -23,7 +23,8 @@ import joblib
 import mlflow
 import numpy as np
 import pandas as pd
-from fastapi import Depends, FastAPI, HTTPException, Query
+import httpx
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
@@ -125,6 +126,44 @@ async def verify_token(
         raise HTTPException(status_code=401, detail="Token expired")
     except pyjwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# =============================================================================
+# Automated Marketing Workflows (n8n Integration)
+# =============================================================================
+
+N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "")
+
+async def trigger_n8n_churn_workflow(account_id: str, churn_score: float, risk_level: str):
+    """
+    Fires a webhook to n8n when a churn prediction is requested.
+    This runs as a background task to avoid blocking the API response.
+    """
+    if not N8N_WEBHOOK_URL:
+        # If no n8n webhook is configured in the environment, do nothing.
+        return
+        
+    # Only alert on high risk accounts to avoid spamming the workflow
+    if risk_level != "High":
+        return
+
+    payload = {
+        "account_id": account_id,
+        "churn_score": churn_score,
+        "risk_level": risk_level,
+        "message": f"URGENT: High Churn Risk Detected for Account {account_id}",
+        "action_required": "Create Retention Ticket"
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(N8N_WEBHOOK_URL, json=payload, timeout=5.0)
+            if response.status_code >= 400:
+                logger.warning("n8n Webhook returned error %s: %s", response.status_code, response.text)
+            else:
+                logger.info("Successfully triggered n8n workflow for account %s", account_id)
+    except Exception as e:
+        logger.error("Failed to trigger n8n webhook: %s", str(e))
 
 
 # =============================================================================
@@ -401,7 +440,11 @@ async def predict_clv(request: CLVRequest, _user: dict = Depends(verify_token)):
 
 
 @app.post("/predict/churn", response_model=ChurnResponse)
-async def predict_churn(request: ChurnRequest, _user: dict = Depends(verify_token)):
+async def predict_churn(
+    request: ChurnRequest,
+    background_tasks: BackgroundTasks,
+    _user: dict = Depends(verify_token)
+):
     if "churn_risk" not in data_store:
         raise HTTPException(status_code=503, detail="Churn model not loaded")
 
@@ -414,6 +457,9 @@ async def predict_churn(request: ChurnRequest, _user: dict = Depends(verify_toke
     row = account.iloc[0]
     score = float(row["churn_risk_score"])
     risk_level = "High" if score > 0.5 else ("Medium" if score > 0.25 else "Low")
+
+    # Trigger n8n retention workflow asynchronously
+    background_tasks.add_task(trigger_n8n_churn_workflow, request.account_id, score, risk_level)
 
     return ChurnResponse(
         account_id=request.account_id,

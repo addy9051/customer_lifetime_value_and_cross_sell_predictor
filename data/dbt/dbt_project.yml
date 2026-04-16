@@ -24,3 +24,6 @@ models:
     features:
       +materialized: table
       +schema: FEATURES
+    marts:
+      +materialized: table
+      +schema: MARTS
