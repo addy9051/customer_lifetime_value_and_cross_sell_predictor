@@ -259,9 +259,34 @@ services:
       - postgres
     restart: unless-stopped
 
+  # -------------------------------------------------------
+  # n8n (Low-Code Workflow Orchestration)
+  # -------------------------------------------------------
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: clv-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_USER_MANAGEMENT_DISABLED=${N8N_USER_MANAGEMENT_DISABLED:-true}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${N8N_POSTGRES_DB:-n8n}
+      - DB_POSTGRESDB_USER=${AIRFLOW_POSTGRES_USER:-airflow}
+      - DB_POSTGRESDB_PASSWORD=${AIRFLOW_POSTGRES_PASSWORD}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   mlflow_data:
   grafana_data:
   postgres_data:
+  n8n_data:
 
 

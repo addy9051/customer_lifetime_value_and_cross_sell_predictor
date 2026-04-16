@@ -1,0 +1,100 @@
+{
+  "name": "Prescriptive Churn Alert - Executive Action",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "value": 1
+            }
+          ]
+        }
+      },
+      "id": "e2d09e3a-7b3a-4f9e-b8d9-6d6e7f1a2b3c",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "sqlQuery",
+        "query": "SELECT * FROM STAGING_MARTS.FACT_ML_CHURN WHERE RISK_LEVEL = 'High' ORDER BY CHURN_RISK_SCORE DESC LIMIT 5;"
+      },
+      "id": "a1b2c3d4-e5f6-4a5b-9c8d-7e6f5d4c3b2a",
+      "name": "Snowflake - High Risk Accounts",
+      "type": "n8n-nodes-base.snowflake",
+      "typeVersion": 1,
+      "position": [
+        520,
+        300
+      ],
+      "credentials": {
+        "snowflake": {
+          "id": "SNOWFLAKE_CRED_ID",
+          "name": "Amex GBT Snowflake"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "REPLACE_WITH_YOUR_SLACK_WEBHOOK_URL",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=🚨 *HIGH RISK CHURN ALERT* 🚨\n\n*Account:* {{ $json.ACCOUNT_ID }}\n*Risk Score:* {{ $json.CHURN_RISK_SCORE }}\n*Industry:* {{ $json.INDUSTRY }}\n*Action Required:* Immediate outreach via Account Manager."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1c2d3e4-f5a6-4b5c-9d8e-7f6a5b4c3d2e",
+      "name": "Slack Alert (Simulated)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Snowflake - High Risk Accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snowflake - High Risk Accounts": {
+      "main": [
+        [
+          {
+            "node": "Slack Alert (Simulated)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateId": "amex_gbt_retention_alert"
+  }
+}

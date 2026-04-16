@@ -16,18 +16,16 @@
 ```
                     ┌──────────────────────────────────────┐
                     │         Apache Airflow (DAGs)        │
-                    │   data_ingestion │ feature_engineering│
+                    │   data_ingestion | snowflake_loader  │
                     └────────┬────────────────┬────────────┘
                              │                │
                     ┌────────▼────────┐ ┌─────▼──────────────┐
                     │   Snowflake     │ │   Databricks       │
                     │  RAW → STAGING  │ │  Feature Eng +     │
-                    │  → FEATURES     │ │  Model Training    │
+                    │  → dbt (MARTS)  │ │  Model Training    │
                     └────────┬────────┘ └─────┬──────────────┘
                              │                │
-                             └───────┬────────┘
-                                     │
-                    ┌────────────────▼─────────────────────┐
+                    ┌────────▼────────────────▼────────────┐
                     │          MLflow Tracking              │
                     │   Experiments · Models · Artifacts    │
                     └────────────────┬─────────────────────┘
@@ -35,16 +33,32 @@
                     ┌────────────────▼─────────────────────┐
                     │     FastAPI Inference Service         │
                     │  /predict/clv  /predict/churn         │
-                    │  /predict/cross-sell  /accounts/{id}  │
-                    └────────────────┬─────────────────────┘
-                                     │
-              ┌──────────────────────┼──────────────────────┐
-              │                      │                      │
-     ┌────────▼────────┐  ┌──────────▼──────────┐  ┌───────▼───────┐
-     │   Streamlit      │  │   Prometheus        │  │   Grafana     │
-     │   Dashboard      │  │   Metrics           │  │   Dashboards  │
-     └─────────────────┘  └─────────────────────┘  └───────────────┘
+                    └──────────┬────────────────┬──────────┘
+                               │                │
+               ┌───────────────▼──────┐  ┌──────▼──────────────┐
+               │  📊 Streamlit App   │  │ 🏢 Power BI Hub     │
+               │  Tactical/Ops View  │  │ Strategic/Exec View │
+               └──────────────────────┘  └─────────────────────┘
 ```
+
+---
+
+## 🛠️ Data Engineering & Star Schema
+
+The project implements a **Modern Data Stack (MDS)** architecture using **Snowflake** and **dbt (data build tool)** to transform raw predictive data into a strategic intelligence layer.
+
+### 1. Star Schema Architecture
+We transitioned from flat tables into an industry-standard star schema to support high-performance DirectQuery analytics:
+- **`dim_accounts`**: Zero-null hardened dimension with synthesized ACV metrics.
+- **`fact_bookings`**: Granular transaction layer used for "Compliance & Leakage" detection.
+- **`fact_ml_churn`**: Hardened survival analysis output with integrated support ticket counts.
+- **`fact_ml_cross_sell`**: Proprietary recommendation matrix unpivoted for categorical analysis.
+
+### 2. Zero-Null Hardening (Professional Layouts)
+All dbt models implement a **Hardening Layer** using `COALESCE` filters. This ensures that Power BI slicers and AI visuals never display "(Blank)" or "Null," maintaining an executive-grade interface at all times.
+
+### 3. Simulation Calibration (AI Storytelling)
+To facilitate "Prescriptive Hub" efficacy, the synthetic data includes **Propensity Calibration**. We injected statistically significant biases into the scores (e.g., industry-specific churn drivers like Retail) to ensure AI visuals detect clear, actionable business trends during demonstrations.
 
 ---
 
@@ -53,154 +67,49 @@
 | Model | Algorithm | Key Metric | Details |
 |---|---|---|---|
 | **CLV Regressor** | LightGBM | **R²=0.61** | MAE=$14.8K, 42 numeric features |
-| **Churn Survival** | Cox PH | **C-Index=0.89** | Median survival 1,079 days |
-| **Segmentation** | HDBSCAN+UMAP | **Silhouette=0.77** | 3 clusters (At-Risk, Low-Engagement, Growth) |
-| **Cross-Sell** | XGBoost Multi-Output | **AUC=0.92+** | 4 products: Neo, Egencia, M&E, Consulting |
+| **Churn Survival** | Cox PH | **C-Index=0.89** | Weighted by support engagement |
+| **Segmentation** | HDBSCAN+UMAP | **Silhouette=0.77** | 3 clusters (At-Risk, Core, Growth) |
+| **Cross-Sell** | XGBoost | **AUC=0.92+** | Calibrated for industry-product fit |
 
 ---
 
 ## 📁 Project Structure
 
-```
+```bash
 customer_lifetime_value_and_cross_sell_predictor/
-├── .github/workflows/ci.yml       # CI/CD: lint, test, Docker build
-├── airflow/dags/                   # Orchestration DAGs
-│   ├── data_ingestion_dag.py       #   Synthesis → Snowflake load
-│   └── feature_engineering_dag.py  #   Feature computation pipeline
-├── api/                            # FastAPI inference service
-│   ├── main.py                     #   6 REST endpoints
-│   ├── Dockerfile                  #   Container definition
-│   └── tests/test_api.py           #   Endpoint contract tests
-├── dashboard/                      # Streamlit UI
-│   ├── app.py                      #   4-page dashboard
-│   └── Dockerfile
+├── airflow/dags/                   # Orchestration (Ingestion → Loader)
+├── api/                            # FastAPI Inference Service
+│   ├── main.py                     #   REST endpoints: /predict, /accounts
+│   └── Dockerfile                  #   Container definition
 ├── data/
-│   ├── generate_synthetic_data.py  # 5K accounts, 1.4M bookings generator
-│   ├── snowflake_loader.py         # Snowflake PUT/COPY loader
-│   └── schema/snowflake_ddl.sql    # RAW → STAGING → FEATURES schemas
-├── features/
-│   └── feature_engineering.py      # 49-feature pipeline (RFM, trajectory, etc.)
-├── models/
-│   ├── clv_model.py                # XGBoost + LightGBM CLV regression
-│   ├── survival_model.py           # Cox PH + Kaplan-Meier churn analysis
-│   ├── segmentation.py             # UMAP + HDBSCAN client clustering
-│   └── cross_sell_model.py         # Multi-label product propensity
-├── monitoring/prometheus.yml       # Prometheus scrape config
-├── docs/model_card.md              # ML Model Card
-├── docker-compose.yml              # 5-service stack
-├── requirements.txt                # Pinned dependencies
-└── README.md                       # This file
+│   ├── dbt/                        # dbt Transformation Layer (Star Schema)
+│   ├── generate_synthetic_data.py  # Behavioral simulation engine
+│   └── snowflake_loader.py         # Secure PUT/COPY loader (Injection-protected)
+├── features/                       # Feature engineering pipeline
+├── models/                         # ML Model Training & Artifacts
+├── dashboard/                      # Streamlit Tactical Dashboard
+├── docs/                           # Documentation, Images, & Screenshots
+└── requirements.txt                # Pinned dependencies
 ```
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (Data Pipeline)
 
-### 1. Setup Environment
-
+### 1. Load Snowflake RAW Schema
 ```bash
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # Linux/Mac
-
-pip install -r requirements.txt
+python -m data.snowflake_loader --data-dir data/synthetic
 ```
 
-### 2. Generate Synthetic Data
-
+### 2. Execute dbt Transformation Layer
 ```bash
-python -m data.generate_synthetic_data \
-  --output-dir data/synthetic \
-  --seed 42 \
-  --format both
+python run_dbt.py run
 ```
-
-**Generates**: 5,000 corporate accounts, 62K travelers, 1.4M bookings, 8.2K contracts, 119K tickets.
-
-### 3. Run Feature Engineering
-
-```bash
-python -m features.feature_engineering \
-  --data-dir data/synthetic \
-  --output-dir data/features \
-  --format both
-```
-
-**Produces**: 5,000 accounts × 49 features (zero nulls).
-
-### 4. Train All Models
-
-```bash
-# CLV Model (XGBoost + LightGBM)
-python -m models.clv_model \
-  --features data/features/account_features.parquet \
-  --output-dir models/artifacts/clv
-
-# Survival Analysis (Cox PH)
-python -m models.survival_model \
-  --features data/features/account_features.parquet \
-  --output-dir models/artifacts/survival
-
-# Client Segmentation (UMAP + HDBSCAN)
-python -m models.segmentation \
-  --features data/features/account_features.parquet \
-  --output-dir models/artifacts/segmentation
-
-# Cross-Sell Propensity (Multi-Label XGBoost)
-python -m models.cross_sell_model \
-  --features data/features/account_features.parquet \
-  --output-dir models/artifacts/cross_sell
-```
-
-### 5. Launch API & Dashboard
-
-```bash
-# Start FastAPI
-uvicorn api.main:app --host 0.0.0.0 --port 8000
-
-# Start Streamlit (separate terminal)
-streamlit run dashboard/app.py --server.port 8501
-```
-
-### 6. Docker Compose (Full Stack)
-
-```bash
-docker compose up --build
-```
-
-**Services launched**:
-- **API**: http://localhost:8000 (+ docs at /docs)
-- **Dashboard**: http://localhost:8501
-- **Airflow**: http://localhost:8081 
-- **MLflow**: http://localhost:5000
-- **pgAdmin**: http://localhost:5050 
-- **Prometheus**: http://localhost:9090
-- **Grafana**: http://localhost:3000
+*Creates the Strategic Intelligence layer in the `STAGING_MARTS` schema.*
 
 ---
 
-## 🔌 API Endpoints
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/health` | Service health + loaded models |
-| `POST` | `/predict/clv` | 12-month CLV prediction |
-| `POST` | `/predict/churn` | Churn risk & survival probability |
-| `POST` | `/predict/cross-sell` | Ranked product recommendations |
-| `GET` | `/accounts/{id}` | Full account profile |
-| `GET` | `/accounts` | List/filter accounts |
-| `GET` | `/segments/summary` | Aggregate segment statistics |
-
-**Example**:
-```bash
-curl -X POST http://localhost:8000/predict/clv \
-  -H "Content-Type: application/json" \
-  -d '{"account_id": "ACCT-00001"}'
-```
-
----
-
-## 📈 Dashboard Pages
+## 📊 Streamlit: Operational Dashboard
 
 1. **🏠 Portfolio Health** — KPIs (total CLV, churn rate, product penetration), CLV distribution by tier, segment pie chart, revenue-at-risk bar chart
 2. **🔍 Account Explorer** — Searchable/filterable account table with detail view (CLV, churn risk, segment, behavioral metrics)
@@ -208,24 +117,47 @@ curl -X POST http://localhost:8000/predict/clv \
 4. **🛒 Cross-Sell Matrix** — Product propensity heatmap across top accounts, segment-level recommendation summaries
 
 ### Live Application Walkthrough
-
 The Amex GBT CLV Predictor & Cross-Sell Dashboard provides a highly dynamic, executive-friendly interface designed for actionable insights.
-
-#### 1. Portfolio Health
-A high-level aggregated view of the entire customer portfolio, displaying churn risk ratios and average Customer Lifetime Value metrics.
 ![Portfolio Health](docs/images/portfolio_health_dashboard.png)
 
-#### 2. Account Explorer
-Provides a deep-dive, granular view into individual corporate accounts, offering survival analysis and customized cross-sell recommendations.
-![Account Explorer](docs/images/account_explorer_dashboard.png)
+---
 
-#### 3. Segment Map
-Visualizes the clustering of the customer base derived from the K-Means algorithmic pipeline.
-![Segment Map](docs/images/segment_map_dashboard.png)
+## 🏢 Power BI: Strategic Executive Intelligence Dashboard
 
-#### 4. Cross-Sell Matrix
-A detailed correlation matrix highlighting the highest-value product bundling opportunities across the client portfolio.
-![Cross-Sell Matrix](docs/images/cross_sell_matrix_dashboard.png)
+The project includes an industry-grade Power BI dashboard designed for C-suite decision-making, integrating the predictive outputs of the ML pipeline for prescriptive action.
+
+### 1. The Landing Page (The "Menu")
+The navigation hub for executives, providing high-level portfolio oversight and quick links to deep-dive analytics.
+![Landing Page](docs/images/pbi/landing_page.png)
+
+### 2. The Command Center (The "What")
+A dynamic situational awareness center, comparing ARR vs. Pipeline and identifying trending accounts.
+![Command Center](docs/images/pbi/command_center.png)
+
+### 3. The Prescriptive Engine (The "Action")
+The "AI-Brain" of the dashboard. Using Key Influencer visuals, this page identifies drivers of churn and cross-sell propensity, providing an account-level action matrix.
+![Prescriptive Engine](docs/images/pbi/prescriptive_engine.png)
+
+### 4. Financial Compliance & Travel Behavior (Operations)
+Focused on financial leakage, this page identifies out-of-policy spend by industry, account, and tier to enable immediate cost-recovery and policy enforcement.
+![Compliance Hub](docs/images/pbi/compliance_hub.png)
+
+---
+
+## 🤖 Low-Code Automation (n8n)
+
+The project leverages **n8n** as a low-code orchestration layer to turn predictive insights into business actions.
+
+### 1. Prescriptive Workflow: Churn Alerting
+We implemented an automated workflow that polls Snowflake for "High Risk" accounts and triggers immediate alerts.
+- **Trigger**: Hourly schedule or Snowflake mutation.
+- **Logic**: Filters for churn probability $> 0.85$ and accounts with open support tickets.
+- **Action**: Sends structured alerts to Slack/Teams for Account Manager intervention.
+
+### 2. CRM Opportunity Sync
+Automates the injection of cross-sell recommendations into the Sales pipeline.
+- **Logic**: Maps high-propensity scores to specific CRM campaign tags.
+- **Action**: Updates a simulated CRM (Google Sheets/Postgres) with ranked "Next Best Action" products.
 
 ---
 
@@ -242,24 +174,17 @@ ruff format --check .
 
 ---
 
-## ☁️ Cloud Integration
-
-| Service | Purpose | Status |
-|---|---|---|
-| **Snowflake** | Feature store (RAW → STAGING → FEATURES schemas) | DDL ready, loader built |
-| **Databricks** | Feature engineering + model training (MLflow) | Notebook-compatible scripts |
-| **Azure ML** | Survival analysis (Cox PH) | Script ready for Azure submission |
-
----
-
 ## 📋 Tech Stack Alignment (Amex GBT)
 
-This project mirrors Amex GBT's known engineering practices:
+This project mirrors Amex GBT's known engineering practices and technology stack consistency:
 
-- **Workflow orchestration**: Apache Airflow (Amex GBT uses Airflow for ETL/ELT)
-- **Model serving**: FastAPI + Docker (simulates Amex GBT's migration from SageMaker → EKS)
-- **Monitoring**: Prometheus + Grafana (simulates Datadog-style inference monitoring)
-- **Full lifecycle ownership**: Data synthesis → feature engineering → training → serving → monitoring
+- **Data Warehousing**: Snowflake + dbt (Standardizing on Modern Data Stack)
+- **Workflow Orchestration**: Apache Airflow (Automated ingestion & loading)
+- **Model Serving**: FastAPI + Docker (High-availability inference API)
+- **Strategic BI**: Power BI (DirectQuery strategic analytics)
+- **Operational UI**: Streamlit (Tactical behavioral exploration)
+- **Monitoring**: Prometheus + Grafana (Inference health & drift tracking)
+- **Lifecycle Mastery**: End-to-end ownership from synthesis → marts → models → action.
 
 ---
 
