@@ -10,7 +10,7 @@ select
     start_date,
     end_date,
     product as service_product,
-    contract_months,
-    contract_value,
+    coalesce(contract_months, 0) as contract_months,
+    coalesce(contract_value, 0) as contract_value,
     is_active
 from contracts

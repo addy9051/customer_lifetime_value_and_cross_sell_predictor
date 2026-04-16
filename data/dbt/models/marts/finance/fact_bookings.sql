@@ -9,7 +9,7 @@ select
     account_id,
     booking_date,
     travel_date,
-    amount as transaction_amount,
+    coalesce(amount, 0) as transaction_amount,
     is_out_of_policy,
-    lead_time_days
+    coalesce(lead_time_days, 0) as lead_time_days
 from bookings

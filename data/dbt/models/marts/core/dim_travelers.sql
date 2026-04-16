@@ -7,6 +7,6 @@ with travelers as (
 select
     traveler_id,
     account_id,
-    role,
-    travel_tier
+    coalesce(nullif(role, ''), 'Unspecified Role') as role,
+    coalesce(nullif(travel_tier, ''), 'Standard') as travel_tier
 from travelers
