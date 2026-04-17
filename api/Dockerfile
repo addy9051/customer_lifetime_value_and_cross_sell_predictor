@@ -20,6 +20,7 @@ COPY api/ ./api/
 COPY models/ ./models/
 COPY features/ ./features/
 COPY data/schema/ ./data/schema/
+COPY marketing/ ./marketing/
 
 # Set ownership and switch to non-root
 RUN chown -R appuser:appuser /app

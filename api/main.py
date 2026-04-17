@@ -19,11 +19,11 @@ import logging
 import os
 from pathlib import Path
 
+import httpx
 import joblib
 import mlflow
 import numpy as np
 import pandas as pd
-import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -54,6 +54,14 @@ except ImportError:
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
+
+try:
+    import dspy
+    from marketing.outreach_program import OutreachProgram
+
+    HAS_DSPY = True
+except ImportError:
+    HAS_DSPY = False
 
 # =============================================================================
 # App Configuration
@@ -134,6 +142,7 @@ async def verify_token(
 
 N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "")
 
+
 async def trigger_n8n_churn_workflow(account_id: str, churn_score: float, risk_level: str):
     """
     Fires a webhook to n8n when a churn prediction is requested.
@@ -142,7 +151,7 @@ async def trigger_n8n_churn_workflow(account_id: str, churn_score: float, risk_l
     if not N8N_WEBHOOK_URL:
         # If no n8n webhook is configured in the environment, do nothing.
         return
-        
+
     # Only alert on high risk accounts to avoid spamming the workflow
     if risk_level != "High":
         return
@@ -152,7 +161,7 @@ async def trigger_n8n_churn_workflow(account_id: str, churn_score: float, risk_l
         "churn_score": churn_score,
         "risk_level": risk_level,
         "message": f"URGENT: High Churn Risk Detected for Account {account_id}",
-        "action_required": "Create Retention Ticket"
+        "action_required": "Create Retention Ticket",
     }
 
     try:
@@ -315,6 +324,33 @@ def load_models():
 @app.on_event("startup")
 async def startup():
     load_models()
+    if HAS_DSPY:
+        _init_dspy()
+
+
+def _init_dspy():
+    """Initialize DSPy with Azure OpenAI settings from environment."""
+    api_key = os.environ.get("AZURE_OPENAI_API_KEY")
+    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
+    api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+    deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o")
+
+    if not api_key or not endpoint:
+        logger.warning("DSPy NOT initialized: Missing AZURE_OPENAI_API_KEY or AZURE_OPENAI_ENDPOINT")
+        return
+
+    try:
+        lm = dspy.AzureOpenAI(
+            api_base=endpoint,
+            api_version=api_version,
+            model=deployment,
+            api_key=api_key,
+            model_type="chat",
+        )
+        dspy.settings.configure(lm=lm)
+        logger.info("DSPy initialized with Azure OpenAI: %s", deployment)
+    except Exception as e:
+        logger.error("Failed to initialize DSPy: %s", str(e))
 
 
 # =============================================================================
@@ -379,6 +415,17 @@ class AccountProfile(BaseModel):
     key_metrics: dict
 
 
+class OutreachRequest(BaseModel):
+    account_id: str
+
+
+class OutreachResponse(BaseModel):
+    account_id: str
+    outreach_message: str
+    recommended_next_step: str
+    model: str = "DSPy (gpt-4o)"
+
+
 # =============================================================================
 # Endpoints
 # =============================================================================
@@ -440,11 +487,7 @@ async def predict_clv(request: CLVRequest, _user: dict = Depends(verify_token)):
 
 
 @app.post("/predict/churn", response_model=ChurnResponse)
-async def predict_churn(
-    request: ChurnRequest,
-    background_tasks: BackgroundTasks,
-    _user: dict = Depends(verify_token)
-):
+async def predict_churn(request: ChurnRequest, background_tasks: BackgroundTasks, _user: dict = Depends(verify_token)):
     if "churn_risk" not in data_store:
         raise HTTPException(status_code=503, detail="Churn model not loaded")
 
@@ -608,6 +651,57 @@ async def segment_summary(_user: dict = Depends(verify_token)):
     )
 
     return summary.to_dict(orient="records")
+
+
+@app.post("/generate/outreach", response_model=OutreachResponse)
+async def generate_outreach(request: OutreachRequest, _user: dict = Depends(verify_token)):
+    """Generate a tailored outreach message using DSPy."""
+    if not HAS_DSPY:
+        raise HTTPException(status_code=501, detail="DSPy module not installed")
+
+    # 1. Gather all predicted data for the account
+    try:
+        profile = await get_account_profile(request.account_id, _user=_user)
+    except HTTPException:
+        raise HTTPException(status_code=404, detail=f"Account {request.account_id} not found")
+
+    # 2. Extract context for the LLM
+    industry = profile.industry
+    clv_tier = profile.tier
+    clv_predicted = f"${profile.clv_12m:,.2f}"
+    risk_level = profile.risk_level
+    current_prods = ", ".join([r["product"] for r in profile.top_recommendations if r.get("is_current")]) or "None"
+    top_rec = profile.top_recommendations[0]["product"] if profile.top_recommendations else "None"
+
+    metrics = profile.key_metrics
+    performance = (
+        f"Spend: ${metrics['total_spend_90d']:,.2f}, "
+        f"Bookings: {metrics['booking_count_90d']}, "
+        f"Support Tickets/Mo: {metrics['ticket_rate_per_month']}"
+    )
+
+    # 3. Call the DSPy program
+    try:
+        program = OutreachProgram()
+        result = program(
+            account_id=request.account_id,
+            industry=industry,
+            clv_tier=clv_tier,
+            clv_predicted=clv_predicted,
+            churn_risk_level=risk_level,
+            current_products=current_prods,
+            top_recommendation=top_rec,
+            recent_performance=performance,
+        )
+
+        return OutreachResponse(
+            account_id=request.account_id,
+            outreach_message=result.outreach_message,
+            recommended_next_step=result.recommended_next_step,
+        )
+    except Exception as e:
+        logger.error("DSPy generation failed: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to generate outreach: {str(e)}")
 
 
 # SECURITY: Maximum pagination limit to prevent full data dumps (VULN-012)
