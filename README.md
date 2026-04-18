@@ -33,6 +33,7 @@
                     ┌────────────────▼─────────────────────┐
                     │     FastAPI Inference Service         │
                     │  /predict/clv  /predict/churn         │
+                    │      /generate/outreach (LLM)         │ ◄─── Azure OpenAI (gpt-4o)
                     └──────────┬────────────────┬──────────┘
                                │                │
                ┌───────────────▼──────┐  ┌──────▼──────────────┐
@@ -62,14 +63,41 @@ To facilitate "Prescriptive Hub" efficacy, the synthetic data includes **Propens
 
 ---
 
-## 📊 Model Performance
+## 🤖 Prescriptive AI & Agentic Workflows (DSPy)
+
+A major evolution in this project is the transition from **Predictive ML** to **Prescriptive Agentic AI**. We engineered an autonomous marketing outreach module natively within the FastAPI backend using the **DSPy framework**.
+
+### System Design Decisions & Improvements
+1. **Agentic Generation over Vanilla ChatCompletion:** Instead of manually formatting prompts to an LLM, we implemented `dspy.ChainOfThought` via an `OutreachSignature`. By forcing the model to systematically reason through our deterministic ML outputs (CLV Tier, Churn Risk, Recommendation Space) *before* writing its response, we significantly grounded the generations, making them highly consultative and virtually eliminating generic AI hallucination.
+2. **Unified API Container:** The DSPy logic was deliberately embedded alongside our `joblib` Scikit-Learn models in the core FastAPI service. This means a single `/generate/outreach` POST request has zero-latency access to pre-loaded feature matrices and seamlessly orchestrates traditional ML inference downstream into LLM generation. 
+3. **Resilient Dockerization & Context Limits:** We successfully containerized the entire stack, overcoming `dbt-core` and SSL cryptography conflicts in the Docker build process, and successfully mapped our `.env` configurations specifically to orchestrate external calls to the **Azure OpenAI (gpt-4o)** endpoint. We intentionally overrode DSPy's local default `max_tokens` fallback to `2048` to ensure un-truncated, executive-grade email generation.
+
+---
+
+## 📊 Model Performance & Algorithmic Rationale
 
 | Model | Algorithm | Key Metric | Details |
 |---|---|---|---|
 | **CLV Regressor** | LightGBM | **R²=0.61** | MAE=$14.8K, 42 numeric features |
 | **Churn Survival** | Cox PH | **C-Index=0.89** | Weighted by support engagement |
-| **Segmentation** | HDBSCAN+UMAP | **Silhouette=0.77** | 3 clusters (At-Risk, Core, Growth) |
-| **Cross-Sell** | XGBoost | **AUC=0.92+** | Calibrated for industry-product fit |
+| **Segmentation** | HDBSCAN + UMAP | **Silhouette=0.77** | 3 clusters (At-Risk, Core, Growth) |
+| **Cross-Sell** | XGBoost (Multi-Output) | **AUC=0.92+** | Calibrated for industry-product fit |
+
+### Modeling Decisions: Why We Chose This Stack
+To maximize the accuracy and business utility of our predictions, we avoided simplistic models in favor of algorithms deeply suited for corporate behavioral data:
+
+1. **Survival Analysis via Cox Proportional Hazards (Cox PH) for Churn**
+   - **The Decision:** Instead of a basic binary classifier (e.g., Logistic Regression predicting "Will Churn: Yes/No"), we implemented a time-to-event survival model.
+   - **The Benefit:** Corporate travel churn isn't instantaneous; it's a decaying process (right-censored data). Cox PH allows us to predict *when* an account will drop below critical thresholds, enabling Account Managers to intervene months before the actual churn event occurs.
+2. **HDBSCAN + UMAP for Unsupervised Segmentation**
+   - **The Decision:** We rejected traditional K-Means clustering in favor of UMAP (for non-linear dimensionality reduction) piped into HDBSCAN (density-based clustering).
+   - **The Benefit:** We did not have to guess how many clusters '$K$' exist. HDBSCAN naturally isolates dense behavioral personas while ignoring noise/outliers, automatically discovering distinct "At-Risk", "Core", and "Growth" account tiers organically from the raw behavioral data.
+3. **Multi-Output XGBoost for Cross-Selling**
+   - **The Decision:** Predicting next-best-product required evaluating an entire suite of Amex GBT features (Neo, Expense, Consulting, etc.) simultaneously. We framed this as a Multi-Output/Multi-Label classification problem wrapped in XGBoost.
+   - **The Benefit:** XGBoost elegantly handles sparse, highly non-linear categorical data (like industry verticals paired with geographical regions) while the Multi-Output extension allows a single model artifact to output independent propensity scores for *every* product in parallel, greatly simplifying our FastAPI latency over serving 5 distinct models.
+4. **LightGBM for Customer Lifetime Value (CLV)**
+   - **The Decision:** Used a gradient-boosted tree (LightGBM) optimized for regression instead of deep learning or linear models.
+   - **The Benefit:** Tabular transaction data is notoriously noisy. LightGBM provides best-in-class GPU-accelerated training speed on tabular datasets, features intrinsic handling for missing values (e.g., new accounts with no history), and provides sharp feature-importance mapping (SHAP) so we can explain *why* an account has a specific CLV to the client.
 
 ---
 
@@ -79,13 +107,14 @@ To facilitate "Prescriptive Hub" efficacy, the synthetic data includes **Propens
 customer_lifetime_value_and_cross_sell_predictor/
 ├── airflow/dags/                   # Orchestration (Ingestion → Loader)
 ├── api/                            # FastAPI Inference Service
-│   ├── main.py                     #   REST endpoints: /predict, /accounts
+│   ├── main.py                     #   REST endpoints: /predict, /generate/outreach
 │   └── Dockerfile                  #   Container definition
 ├── data/
 │   ├── dbt/                        # dbt Transformation Layer (Star Schema)
 │   ├── generate_synthetic_data.py  # Behavioral simulation engine
 │   └── snowflake_loader.py         # Secure PUT/COPY loader (Injection-protected)
 ├── features/                       # Feature engineering pipeline
+├── marketing/                      # Agentic AI — DSPy Outreach Programs
 ├── models/                         # ML Model Training & Artifacts
 ├── dashboard/                      # Streamlit Tactical Dashboard
 ├── docs/                           # Documentation, Images, & Screenshots
@@ -146,13 +175,13 @@ Focused on financial leakage, this page identifies out-of-policy spend by indust
 
 ## 🤖 Low-Code Automation (n8n)
 
-The project leverages **n8n** as a low-code orchestration layer to turn predictive insights into business actions.
+The project leverages **n8n** as a low-code orchestration layer to turn both predictive insights and dynamic LLM generations into direct business actions.
 
-### 1. Prescriptive Workflow: Churn Alerting
-We implemented an automated workflow that polls Snowflake for "High Risk" accounts and triggers immediate alerts.
-- **Trigger**: Hourly schedule or Snowflake mutation.
-- **Logic**: Filters for churn probability $> 0.85$ and accounts with open support tickets.
-- **Action**: Sends structured alerts to Slack/Teams for Account Manager intervention.
+### 1. Future Roadmap: Agentic Outreach via Webhooks (Planned)
+Our next roadmap goal is to directly pipe our FastAPI `/generate/outreach` LLM endpoint into **Slack** or a **Salesforce CRM** using n8n webhooks. 
+- **Trigger**: Hourly schedule polling Snowflake for "High Churn Risk" + "High CLV" active accounts.
+- **Processing**: The webhook payload will hit our FastAPI endpoint to autonomously draft a highly personalized, targeted email for the client based on their specific predictive modeling behavior.
+- **Action**: An Amex GBT account manager will receive an automated Slack ping containing the raw drafted email text, allowing them to review and instantly 1-click send the email to mitigate the churn hazard.
 
 ### 2. CRM Opportunity Sync
 Automates the injection of cross-sell recommendations into the Sales pipeline.

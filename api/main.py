@@ -21,7 +21,6 @@ from pathlib import Path
 
 import httpx
 import joblib
-import mlflow
 import numpy as np
 import pandas as pd
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
@@ -232,10 +231,12 @@ def load_models():
     use_mlflow = bool(os.environ.get("DATABRICKS_HOST"))
 
     if use_mlflow:
-        logger.info("DATABRICKS_HOST detected. Pulling models from MLFlow Model Registry...")
-        mlflow.set_tracking_uri("databricks")
-
         try:
+            import mlflow
+
+            logger.info("DATABRICKS_HOST detected. Pulling models from MLFlow Model Registry...")
+            mlflow.set_tracking_uri("databricks")
+
             models["clv"] = mlflow.pyfunc.load_model("models:/amex-gbt-clv/Production")
             models["survival"] = mlflow.pyfunc.load_model("models:/amex-gbt-survival/Production")
             models["cross_sell"] = mlflow.xgboost.load_model("models:/amex-gbt-cross-sell/Production")
@@ -246,6 +247,9 @@ def load_models():
             # to loading local config schemas if they exist, or rely on Pandas DataFrame schemas.
 
             logger.info("Successfully loaded all 3 models from MLFlow Registry.")
+        except ImportError:
+            logger.warning("mlflow not installed — falling back to local model loading")
+            use_mlflow = False
         except Exception as e:
             logger.error("Failed to load models from MLFlow: %s", str(e))
             use_mlflow = False  # Fall back to local if MLFlow fails during migration testing
@@ -346,6 +350,7 @@ def _init_dspy():
             model=deployment,
             api_key=api_key,
             model_type="chat",
+            max_tokens=2048,
         )
         dspy.settings.configure(lm=lm)
         logger.info("DSPy initialized with Azure OpenAI: %s", deployment)

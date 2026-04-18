@@ -27,6 +27,8 @@ services:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ARTIFACTS_DIR=/app/models/artifacts
       - DATA_DIR=/app/data
+    env_file:
+      - .env
     volumes:
       - ./models/artifacts:/app/models/artifacts:ro
       - ./data/features:/app/data/features:ro
