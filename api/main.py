@@ -39,6 +39,7 @@ except ImportError:
 try:
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
     from slowapi.util import get_remote_address
 
     HAS_SLOWAPI = True
@@ -98,11 +99,16 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
 )
 
-# SECURITY: Rate limiting (VULN-011)
+# SECURITY: Rate limiting (VULN-011). Enforce a global default limit via
+# SlowAPIMiddleware so every route is actually covered — previously the limiter
+# was registered but no endpoint had a `@limiter.limit(...)` decorator, so no
+# limiting occurred. Override the default with API_RATE_LIMIT if needed.
 if HAS_SLOWAPI:
-    limiter = Limiter(key_func=get_remote_address)
+    RATE_LIMIT = os.environ.get("API_RATE_LIMIT", "120/minute")
+    limiter = Limiter(key_func=get_remote_address, default_limits=[RATE_LIMIT])
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
 
 if HAS_PROMETHEUS:
     Instrumentator().instrument(app).expose(app)
@@ -111,10 +117,23 @@ if HAS_PROMETHEUS:
 # Authentication (VULN-010)
 # =============================================================================
 
-# JWT secret for API auth — in production, source from Azure Key Vault
+# JWT secret for API auth — in production, source from Azure Key Vault.
+APP_ENV = os.environ.get("APP_ENV", os.environ.get("ENVIRONMENT", "development")).lower()
+_PROD_ENVS = {"production", "prod"}
 API_SECRET_KEY = os.environ.get("API_SECRET_KEY", "")
 API_AUTH_ENABLED = bool(API_SECRET_KEY)
 security = HTTPBearer(auto_error=False)
+
+if not API_AUTH_ENABLED:
+    # Fail closed in production; warn loudly in dev so a misconfigured deploy is obvious.
+    if APP_ENV in _PROD_ENVS:
+        raise RuntimeError(
+            "API_SECRET_KEY must be set when APP_ENV=production — refusing to start with authentication disabled."
+        )
+    logger.warning(
+        "SECURITY: API_SECRET_KEY not set — authentication is DISABLED (dev mode); "
+        "all requests are treated as admin. Set API_SECRET_KEY to enforce auth."
+    )
 
 
 async def verify_token(
@@ -202,12 +221,18 @@ def _verify_artifact_integrity(path: Path) -> bool:
     """Verify SHA-256 hash of a model artifact before loading (VULN-006).
 
     Checks against a checksums file at ARTIFACTS_DIR/artifact_checksums.json.
-    If no checksums file exists, logs a warning and allows loading (dev mode).
+    Missing checksums fail OPEN in dev (logs a warning) but fail CLOSED when
+    APP_ENV=production, so an unverified artifact is never loaded in production.
     """
+    fail_open = APP_ENV not in _PROD_ENVS
+
     checksums_path = ARTIFACTS_DIR / "artifact_checksums.json"
     if not checksums_path.exists():
-        logger.warning("SECURITY: No artifact_checksums.json found — skipping integrity check for %s", path.name)
-        return True
+        if fail_open:
+            logger.warning("SECURITY: No artifact_checksums.json found — skipping integrity check for %s", path.name)
+            return True
+        logger.error("SECURITY: No artifact_checksums.json found — refusing to load %s in production", path.name)
+        return False
 
     try:
         checksums = json.loads(checksums_path.read_text())
@@ -218,8 +243,11 @@ def _verify_artifact_integrity(path: Path) -> bool:
     relative_key = str(path.relative_to(ARTIFACTS_DIR)).replace("\\", "/")
     expected_hash = checksums.get(relative_key)
     if not expected_hash:
-        logger.warning("SECURITY: No checksum entry for %s — artifact not verified", relative_key)
-        return True  # Allow in dev; in production, return False
+        if fail_open:
+            logger.warning("SECURITY: No checksum entry for %s — artifact not verified", relative_key)
+            return True
+        logger.error("SECURITY: No checksum entry for %s — refusing to load in production", relative_key)
+        return False
 
     actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
     if actual_hash != expected_hash:
