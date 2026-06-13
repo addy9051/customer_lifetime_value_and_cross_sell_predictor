@@ -68,7 +68,28 @@ jobs:
           python -m pip freeze | grep -Ei "pyopenssl|snowflake|cryptography"
 
       - name: pip-audit (CVE scan)
-        run: python -m pip_audit --strict --desc
+        # Documented suppressions: every ignored advisory is gated by an upstream
+        # cap we cannot move while staying on Snowflake / dbt 1.9. The fix versions
+        # are unreachable, not unapplied. Revisit on the next snowflake-sqlalchemy /
+        # dbt upgrade and drop any IDs that have become installable.
+        #   cryptography 46.0.0 (fix 46.0.5+) — snowflake-sqlalchemy 1.9.0 caps <46.0.1:
+        #     PYSEC-2026-35, PYSEC-2026-36, GHSA-r6ph-v2qm-q3c2
+        #   pyOpenSSL 25.3.0 (fix 26.0.0) — snowflake-connector-python caps <26:
+        #     GHSA-vp96-hxj8-p424, GHSA-5pwr-322w-8jr4
+        #   dbt-common 1.27.1 (fix 1.34.2) — transitive, pinned by dbt-core 1.9.4:
+        #     GHSA-w75w-9qv4-j5xj
+        #   deepdiff 7.0.1 (fix 8.6.x) — transitive via dbt-common:
+        #     GHSA-mw26-5g2v-hqw3, GHSA-54jj-px8x-5w5q
+        run: >
+          python -m pip_audit --strict --desc
+          --ignore-vuln PYSEC-2026-35
+          --ignore-vuln PYSEC-2026-36
+          --ignore-vuln GHSA-r6ph-v2qm-q3c2
+          --ignore-vuln GHSA-vp96-hxj8-p424
+          --ignore-vuln GHSA-5pwr-322w-8jr4
+          --ignore-vuln GHSA-w75w-9qv4-j5xj
+          --ignore-vuln GHSA-mw26-5g2v-hqw3
+          --ignore-vuln GHSA-54jj-px8x-5w5q
 
       - name: safety check
         run: safety check --full-report
