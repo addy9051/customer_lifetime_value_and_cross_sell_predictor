@@ -416,6 +416,7 @@ class AccountProfile(BaseModel):
     churn_risk_score: float
     risk_level: str
     segment: str
+    current_products: list[str]
     top_recommendations: list[dict]
     key_metrics: dict
 
@@ -595,15 +596,18 @@ async def get_account_profile(account_id: str, _user: dict = Depends(verify_toke
         if len(seg_row) > 0:
             segment = seg_row.iloc[0]["segment"]
 
-    # Recommendations
+    # Recommendations + currently-adopted products
     top_recs = []
+    current_products = []
     if "recommendations" in data_store and "cross_sell_proba" in data_store:
         proba = data_store["cross_sell_proba"]
         proba_row = proba[proba["account_id"] == account_id]
         if len(proba_row) > 0:
             pr = proba_row.iloc[0]
             for name in ["Neo", "Egencia Analytics Studio", "Meetings & Events", "Travel Consulting"]:
-                if int(pr.get(f"{name}_current", 0)) == 0:
+                if int(pr.get(f"{name}_current", 0)) == 1:
+                    current_products.append(name)
+                else:
                     top_recs.append({"product": name, "score": round(float(pr[f"{name}_score"]), 4)})
             top_recs.sort(key=lambda x: x["score"], reverse=True)
             top_recs = top_recs[:3]
@@ -617,6 +621,7 @@ async def get_account_profile(account_id: str, _user: dict = Depends(verify_toke
         churn_risk_score=round(churn_score, 4),
         risk_level=risk_level,
         segment=segment,
+        current_products=current_products,
         top_recommendations=top_recs,
         key_metrics={
             "booking_count_90d": int(row.get("booking_count_90d", 0)),
@@ -664,18 +669,17 @@ async def generate_outreach(request: OutreachRequest, _user: dict = Depends(veri
     if not HAS_DSPY:
         raise HTTPException(status_code=501, detail="DSPy module not installed")
 
-    # 1. Gather all predicted data for the account
-    try:
-        profile = await get_account_profile(request.account_id, _user=_user)
-    except HTTPException:
-        raise HTTPException(status_code=404, detail=f"Account {request.account_id} not found")
+    # 1. Gather all predicted data for the account.
+    #    Let get_account_profile's own HTTPException (404/503) propagate unchanged
+    #    rather than masking a 503 "not loaded" as a 404 "not found".
+    profile = await get_account_profile(request.account_id, _user=_user)
 
     # 2. Extract context for the LLM
     industry = profile.industry
     clv_tier = profile.tier
     clv_predicted = f"${profile.clv_12m:,.2f}"
     risk_level = profile.risk_level
-    current_prods = ", ".join([r["product"] for r in profile.top_recommendations if r.get("is_current")]) or "None"
+    current_prods = ", ".join(profile.current_products) or "None"
     top_rec = profile.top_recommendations[0]["product"] if profile.top_recommendations else "None"
 
     metrics = profile.key_metrics
