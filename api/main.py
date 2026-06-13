@@ -70,7 +70,11 @@ except ImportError:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load model artifacts (and DSPy) at startup, before serving requests."""
+    """
+    Run startup initialization to load model artifacts and initialize DSPy when available before the app serves requests.
+    
+    Yields control for the application's active lifespan so the application can begin handling requests.
+    """
     load_models()
     if HAS_DSPY:
         _init_dspy()
@@ -236,7 +240,11 @@ def _verify_artifact_integrity(path: Path) -> bool:
 
 
 def load_models():
-    """Load all model artifacts at startup."""
+    """
+    Load available ML models and precomputed datasets into module-level registries.
+    
+    Populates the global `models` and `data_store` dictionaries by attempting to load artifacts from the MLflow Model Registry when configured, and falling back to local artifact files otherwise. Performs artifact integrity checks when available, skips missing artifacts, and logs load status and errors.
+    """
     global models, data_store
 
     # Toggle between MLFlow Model Registry and Local Joblib based on Environment Variables
@@ -338,7 +346,11 @@ def load_models():
 
 
 def _init_dspy():
-    """Initialize DSPy with Azure OpenAI settings from environment."""
+    """
+    Initialize and configure the global DSPy client using Azure OpenAI credentials from environment variables.
+    
+    Reads AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT (required). Optionally uses AZURE_OPENAI_API_VERSION (default "2024-02-15-preview") and AZURE_OPENAI_DEPLOYMENT_NAME (default "gpt-4o"). If credentials are present, constructs an Azure OpenAI client and applies it to dspy.settings; if credentials are missing, leaves DSPy uninitialized and logs a warning. Any initialization error is logged.
+    """
     api_key = os.environ.get("AZURE_OPENAI_API_KEY")
     endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
     api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
@@ -570,7 +582,19 @@ async def predict_cross_sell(request: CrossSellRequest, _user: dict = Depends(ve
 
 @app.get("/accounts/{account_id}", response_model=AccountProfile)
 async def get_account_profile(account_id: str, _user: dict = Depends(verify_token)):
-    """Full account profile — CLV + churn + segment + recommendations."""
+    """
+    Return a consolidated account profile containing CLV, churn, segment, recommendations, and key metrics.
+    
+    Parameters:
+        account_id (str): The account identifier to lookup.
+    
+    Returns:
+        AccountProfile: Pydantic model with account metadata (`tier`, `industry`, `region`), `clv_12m`, `churn_risk_score`, `risk_level`, `segment`, `current_products`, `top_recommendations`, and `key_metrics`.
+    
+    Raises:
+        HTTPException: 503 if feature data is not loaded.
+        HTTPException: 404 if the specified account_id is not found.
+    """
     if "features" not in data_store:
         raise HTTPException(status_code=503, detail="Features not loaded")
 
@@ -670,7 +694,23 @@ async def segment_summary(_user: dict = Depends(verify_token)):
 
 @app.post("/generate/outreach", response_model=OutreachResponse)
 async def generate_outreach(request: OutreachRequest, _user: dict = Depends(verify_token)):
-    """Generate a tailored outreach message using DSPy."""
+    """
+    Generate a tailored outreach message for an account using DSPy.
+    
+    Fetches the account profile, builds the DSPy program inputs from the profile, invokes OutreachProgram, and returns the generated outreach payload.
+    
+    Parameters:
+        request (OutreachRequest): Request containing the target `account_id` and any generation options.
+    
+    Returns:
+        OutreachResponse: Response with `account_id`, `outreach_message`, and `recommended_next_step`.
+    
+    Raises:
+        HTTPException: 501 if DSPy support is not available.
+        HTTPException: 404 if the account is not found (propagated from account profile lookup).
+        HTTPException: 503 if required model/data stores are not loaded (propagated from account profile lookup).
+        HTTPException: 500 if DSPy generation fails.
+    """
     if not HAS_DSPY:
         raise HTTPException(status_code=501, detail="DSPy module not installed")
 
