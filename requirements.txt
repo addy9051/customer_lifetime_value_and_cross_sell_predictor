@@ -54,9 +54,9 @@ prometheus-fastapi-instrumentator==6.1.0
 
 # Security — API auth & rate limiting (VULN-010, VULN-011)
 PyJWT>=2.12.0
-cryptography>=46.0.6,<47.0.0  # Bumped from <46 — DNS name constraint validation CVE
-pyOpenSSL>=26.0.0             # Bumped from >=24 — callback/buffer-overflow CVEs
-urllib3>=2.6.3               # Pin >=2 — redirect/decompression CVEs (enabled by dbt 1.9)
+cryptography>=46.0.0,<47.0.0  # Max reachable on Snowflake (snowflake-sqlalchemy caps <46.0.1); CVE fixes need 46.0.5+ — see CI ignore-list
+pyOpenSSL>=25.0.0,<26.0.0    # Capped <26: snowflake-connector-python requires <26 (CVE unpatchable on Snowflake)
+urllib3>=2.6.3               # Pin >=2 — redirect/decompression CVEs (enabled by dbt 1.9 + snowflake 3.18)
 slowapi==0.1.9
 
 # Testing & Dev
