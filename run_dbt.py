@@ -11,9 +11,20 @@ Usage:
 """
 
 import os
+import shutil
+import subprocess
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
+
+
+def _resolve_dbt() -> str:
+    """Locate the dbt executable, preferring one next to the current interpreter."""
+    candidate = Path(sys.executable).parent / ("dbt.exe" if os.name == "nt" else "dbt")
+    if candidate.exists():
+        return str(candidate)
+    return shutil.which("dbt") or "dbt"
 
 
 def main():
@@ -23,16 +34,17 @@ def main():
     # Point dbt to our custom structure
     os.environ["DBT_PROFILES_DIR"] = "data/dbt"
 
-    # Reconstruct the dbt command passing through any UI args
-    dbt_args = " ".join(sys.argv[1:])
-    cmd = f"poetry run dbt {dbt_args} --project-dir data/dbt"
+    # Build the dbt command as an argument list — no shell, so user-supplied
+    # args cannot be interpreted as shell metacharacters (no injection).
+    cmd = [_resolve_dbt(), *sys.argv[1:], "--project-dir", "data/dbt"]
 
-    print(f"Executing secure wrapper -> {cmd}")
+    print(f"Executing dbt wrapper -> {' '.join(cmd)}")
 
-    exit_code = os.system(cmd)
-
-    # Ensure terminal returns failure if dbt fails
-    sys.exit(exit_code >> 8)
+    # shell=False (default). Propagate dbt's real exit code directly so dbt
+    # failures fail this wrapper on every platform (the previous `os.system`
+    # `>> 8` decoding silently masked non-zero exits as success on Windows).
+    result = subprocess.run(cmd)
+    sys.exit(result.returncode)
 
 
 if __name__ == "__main__":
