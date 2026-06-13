@@ -216,12 +216,12 @@ def load_clv_labels(cursor, data_dir: Path, database: str):
 def load_ml_artifacts(cursor, database: str):
     """Load latest ML artifacts directly to Snowflake RAW schema."""
     ml_base_dir = Path(__file__).parent.parent / "models" / "artifacts"
-    
+
     ml_tables = {
         "CHURN_PREDICTIONS": ml_base_dir / "survival" / "churn_risk_predictions.csv",
         "CROSS_SELL_RECOMMENDATIONS": ml_base_dir / "cross_sell" / "account_recommendations.csv",
     }
-    
+
     for table_name, csv_path in ml_tables.items():
         if csv_path.exists():
             load_table(cursor, csv_path.parent, database, "RAW", table_name, csv_path.name)

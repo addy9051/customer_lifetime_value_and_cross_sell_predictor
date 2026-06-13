@@ -17,6 +17,7 @@ import hashlib
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
@@ -38,6 +39,7 @@ except ImportError:
 try:
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
     from slowapi.util import get_remote_address
 
     HAS_SLOWAPI = True
@@ -66,10 +68,21 @@ except ImportError:
 # App Configuration
 # =============================================================================
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load model artifacts (and DSPy) at startup, before serving requests."""
+    load_models()
+    if HAS_DSPY:
+        _init_dspy()
+    yield
+
+
 app = FastAPI(
     title="CLV & Cross-Sell Predictor API",
     description="Amex GBT Corporate Travel — Customer Lifetime Value & Cross-Sell Intelligence",
     version="1.1.0",
+    lifespan=lifespan,
 )
 
 # SECURITY: Restrict CORS to known origins only (VULN-005)
@@ -86,11 +99,16 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
 )
 
-# SECURITY: Rate limiting (VULN-011)
+# SECURITY: Rate limiting (VULN-011). Enforce a global default limit via
+# SlowAPIMiddleware so every route is actually covered — previously the limiter
+# was registered but no endpoint had a `@limiter.limit(...)` decorator, so no
+# limiting occurred. Override the default with API_RATE_LIMIT if needed.
 if HAS_SLOWAPI:
-    limiter = Limiter(key_func=get_remote_address)
+    RATE_LIMIT = os.environ.get("API_RATE_LIMIT", "120/minute")
+    limiter = Limiter(key_func=get_remote_address, default_limits=[RATE_LIMIT])
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
 
 if HAS_PROMETHEUS:
     Instrumentator().instrument(app).expose(app)
@@ -99,10 +117,23 @@ if HAS_PROMETHEUS:
 # Authentication (VULN-010)
 # =============================================================================
 
-# JWT secret for API auth — in production, source from Azure Key Vault
+# JWT secret for API auth — in production, source from Azure Key Vault.
+APP_ENV = os.environ.get("APP_ENV", os.environ.get("ENVIRONMENT", "development")).lower()
+_PROD_ENVS = {"production", "prod"}
 API_SECRET_KEY = os.environ.get("API_SECRET_KEY", "")
 API_AUTH_ENABLED = bool(API_SECRET_KEY)
 security = HTTPBearer(auto_error=False)
+
+if not API_AUTH_ENABLED:
+    # Fail closed in production; warn loudly in dev so a misconfigured deploy is obvious.
+    if APP_ENV in _PROD_ENVS:
+        raise RuntimeError(
+            "API_SECRET_KEY must be set when APP_ENV=production — refusing to start with authentication disabled."
+        )
+    logger.warning(
+        "SECURITY: API_SECRET_KEY not set — authentication is DISABLED (dev mode); "
+        "all requests are treated as admin. Set API_SECRET_KEY to enforce auth."
+    )
 
 
 async def verify_token(
@@ -190,12 +221,18 @@ def _verify_artifact_integrity(path: Path) -> bool:
     """Verify SHA-256 hash of a model artifact before loading (VULN-006).
 
     Checks against a checksums file at ARTIFACTS_DIR/artifact_checksums.json.
-    If no checksums file exists, logs a warning and allows loading (dev mode).
+    Missing checksums fail OPEN in dev (logs a warning) but fail CLOSED when
+    APP_ENV=production, so an unverified artifact is never loaded in production.
     """
+    fail_open = APP_ENV not in _PROD_ENVS
+
     checksums_path = ARTIFACTS_DIR / "artifact_checksums.json"
     if not checksums_path.exists():
-        logger.warning("SECURITY: No artifact_checksums.json found — skipping integrity check for %s", path.name)
-        return True
+        if fail_open:
+            logger.warning("SECURITY: No artifact_checksums.json found — skipping integrity check for %s", path.name)
+            return True
+        logger.error("SECURITY: No artifact_checksums.json found — refusing to load %s in production", path.name)
+        return False
 
     try:
         checksums = json.loads(checksums_path.read_text())
@@ -206,8 +243,11 @@ def _verify_artifact_integrity(path: Path) -> bool:
     relative_key = str(path.relative_to(ARTIFACTS_DIR)).replace("\\", "/")
     expected_hash = checksums.get(relative_key)
     if not expected_hash:
-        logger.warning("SECURITY: No checksum entry for %s — artifact not verified", relative_key)
-        return True  # Allow in dev; in production, return False
+        if fail_open:
+            logger.warning("SECURITY: No checksum entry for %s — artifact not verified", relative_key)
+            return True
+        logger.error("SECURITY: No checksum entry for %s — refusing to load in production", relative_key)
+        return False
 
     actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
     if actual_hash != expected_hash:
@@ -277,8 +317,11 @@ def load_models():
                 logger.error("SECURITY: Refusing to load survival model — integrity check failed")
             else:
                 models["survival"] = joblib.load(survival_path)
-                if scaler_path.exists() and _verify_artifact_integrity(scaler_path):
-                    models["survival_scaler"] = joblib.load(scaler_path)
+                if scaler_path.exists():
+                    if _verify_artifact_integrity(scaler_path):
+                        models["survival_scaler"] = joblib.load(scaler_path)
+                    else:
+                        logger.error("SECURITY: Refusing to load survival scaler — integrity check failed")
                 logger.info("Loaded survival model locally")
 
         # Cross-sell model
@@ -288,8 +331,10 @@ def load_models():
                 logger.error("SECURITY: Refusing to load cross-sell model — integrity check failed")
             else:
                 models["cross_sell"] = joblib.load(xs_path)
-                with open(ARTIFACTS_DIR / "cross_sell" / "feature_columns.json") as f:
-                    models["cross_sell_features"] = json.load(f)
+                xs_features_path = ARTIFACTS_DIR / "cross_sell" / "feature_columns.json"
+                if xs_features_path.exists():
+                    with open(xs_features_path) as f:
+                        models["cross_sell_features"] = json.load(f)
                 logger.info("Loaded cross-sell model locally")
 
     # Segmentation
@@ -323,13 +368,6 @@ def load_models():
         logger.info("Loaded cross-sell probabilities")
 
     logger.info("Model loading complete — %d models, %d data stores", len(models), len(data_store))
-
-
-@app.on_event("startup")
-async def startup():
-    load_models()
-    if HAS_DSPY:
-        _init_dspy()
 
 
 def _init_dspy():
@@ -416,6 +454,7 @@ class AccountProfile(BaseModel):
     churn_risk_score: float
     risk_level: str
     segment: str
+    current_products: list[str]
     top_recommendations: list[dict]
     key_metrics: dict
 
@@ -543,7 +582,7 @@ async def predict_cross_sell(request: CrossSellRequest, _user: dict = Depends(ve
     current_products = []
 
     for name in product_names:
-        score = float(proba_row[f"{name}_score"])
+        score = float(proba_row.get(f"{name}_score", 0.0))
         is_current = int(proba_row.get(f"{name}_current", 0))
 
         if is_current:
@@ -595,16 +634,19 @@ async def get_account_profile(account_id: str, _user: dict = Depends(verify_toke
         if len(seg_row) > 0:
             segment = seg_row.iloc[0]["segment"]
 
-    # Recommendations
+    # Recommendations + currently-adopted products
     top_recs = []
+    current_products = []
     if "recommendations" in data_store and "cross_sell_proba" in data_store:
         proba = data_store["cross_sell_proba"]
         proba_row = proba[proba["account_id"] == account_id]
         if len(proba_row) > 0:
             pr = proba_row.iloc[0]
             for name in ["Neo", "Egencia Analytics Studio", "Meetings & Events", "Travel Consulting"]:
-                if int(pr.get(f"{name}_current", 0)) == 0:
-                    top_recs.append({"product": name, "score": round(float(pr[f"{name}_score"]), 4)})
+                if int(pr.get(f"{name}_current", 0)) == 1:
+                    current_products.append(name)
+                else:
+                    top_recs.append({"product": name, "score": round(float(pr.get(f"{name}_score", 0.0)), 4)})
             top_recs.sort(key=lambda x: x["score"], reverse=True)
             top_recs = top_recs[:3]
 
@@ -617,6 +659,7 @@ async def get_account_profile(account_id: str, _user: dict = Depends(verify_toke
         churn_risk_score=round(churn_score, 4),
         risk_level=risk_level,
         segment=segment,
+        current_products=current_products,
         top_recommendations=top_recs,
         key_metrics={
             "booking_count_90d": int(row.get("booking_count_90d", 0)),
@@ -664,18 +707,17 @@ async def generate_outreach(request: OutreachRequest, _user: dict = Depends(veri
     if not HAS_DSPY:
         raise HTTPException(status_code=501, detail="DSPy module not installed")
 
-    # 1. Gather all predicted data for the account
-    try:
-        profile = await get_account_profile(request.account_id, _user=_user)
-    except HTTPException:
-        raise HTTPException(status_code=404, detail=f"Account {request.account_id} not found")
+    # 1. Gather all predicted data for the account.
+    #    Let get_account_profile's own HTTPException (404/503) propagate unchanged
+    #    rather than masking a 503 "not loaded" as a 404 "not found".
+    profile = await get_account_profile(request.account_id, _user=_user)
 
     # 2. Extract context for the LLM
     industry = profile.industry
     clv_tier = profile.tier
     clv_predicted = f"${profile.clv_12m:,.2f}"
     risk_level = profile.risk_level
-    current_prods = ", ".join([r["product"] for r in profile.top_recommendations if r.get("is_current")]) or "None"
+    current_prods = ", ".join(profile.current_products) or "None"
     top_rec = profile.top_recommendations[0]["product"] if profile.top_recommendations else "None"
 
     metrics = profile.key_metrics

@@ -1,7 +1,7 @@
 # =============================================================================
 # SECURITY: All dependencies pinned to exact versions (VULN-004)
 # Run `pip-audit` and `safety check` before updating any version.
-# Last audited: 2026-04-15
+# Last audited: 2026-06-13
 # =============================================================================
 
 # Core ML & Data
@@ -22,10 +22,10 @@ faker==22.6.0                # Realistic synthetic data
 # Data Infrastructure
 # snowflake-connector-python==3.13.1
 snowflake-sqlalchemy==1.9.0
-python-dotenv==1.0.1
+python-dotenv==1.2.2         # Bumped from 1.0.1 — symlink vuln (pip-audit)
 sqlalchemy==1.4.52           # Pinned <2.0 for Snowflake compat
-dbt-core==1.7.13             # Data build tool
-dbt-snowflake==1.7.3         # dbt adapter for Snowflake
+dbt-core==1.9.4              # Bumped 1.7->1.9 (network-binding CVE + allows urllib3>=2)
+dbt-snowflake==1.9.4         # dbt adapter for Snowflake (kept in lockstep with dbt-core)
 
 # Azure ML — SDK v1 (deprecated March 2025, EOL June 2026)
 # Moved to requirements-azureml-v1.txt to avoid pyOpenSSL<25 conflict.
@@ -54,8 +54,9 @@ prometheus-fastapi-instrumentator==6.1.0
 
 # Security — API auth & rate limiting (VULN-010, VULN-011)
 PyJWT>=2.12.0
-cryptography>=44.0.0,<46.0.0
-pyOpenSSL>=24.0.0
+cryptography>=46.0.6,<47.0.0  # Bumped from <46 — DNS name constraint validation CVE
+pyOpenSSL>=26.0.0             # Bumped from >=24 — callback/buffer-overflow CVEs
+urllib3>=2.6.3               # Pin >=2 — redirect/decompression CVEs (enabled by dbt 1.9)
 slowapi==0.1.9
 
 # Testing & Dev

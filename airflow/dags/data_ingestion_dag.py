@@ -73,7 +73,7 @@ def _validate_data_quality(**kwargs):
         "corporate_accounts.csv": {"min_rows": 4500, "required_cols": ["account_id", "tier", "is_churned"]},
         "bookings.csv": {"min_rows": 800_000, "required_cols": ["booking_id", "amount", "booking_date"]},
         "traveler_profiles.csv": {"min_rows": 20_000, "required_cols": ["traveler_id", "account_id"]},
-        "service_contracts.csv": {"min_rows": 5_000, "required_cols": ["contract_id", "product"]},
+        "service_contracts.csv": {"min_rows": 5_000, "required_cols": ["contract_id", "product", "contract_value"]},
         "support_tickets.csv": {"min_rows": 10_000, "required_cols": ["ticket_id", "severity"]},
         "clv_labels.csv": {"min_rows": 4500, "required_cols": ["account_id", "clv_12m"]},
     }
