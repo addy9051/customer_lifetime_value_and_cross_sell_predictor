@@ -17,6 +17,7 @@ import hashlib
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
@@ -66,10 +67,21 @@ except ImportError:
 # App Configuration
 # =============================================================================
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load model artifacts (and DSPy) at startup, before serving requests."""
+    load_models()
+    if HAS_DSPY:
+        _init_dspy()
+    yield
+
+
 app = FastAPI(
     title="CLV & Cross-Sell Predictor API",
     description="Amex GBT Corporate Travel — Customer Lifetime Value & Cross-Sell Intelligence",
     version="1.1.0",
+    lifespan=lifespan,
 )
 
 # SECURITY: Restrict CORS to known origins only (VULN-005)
@@ -323,13 +335,6 @@ def load_models():
         logger.info("Loaded cross-sell probabilities")
 
     logger.info("Model loading complete — %d models, %d data stores", len(models), len(data_store))
-
-
-@app.on_event("startup")
-async def startup():
-    load_models()
-    if HAS_DSPY:
-        _init_dspy()
 
 
 def _init_dspy():

@@ -18,7 +18,22 @@ def client():
 
     from api.main import app
 
-    return TestClient(app)
+    # Enter the context manager so the FastAPI lifespan handler runs and loads
+    # models/data. Returning a bare TestClient (as before) skips startup, which
+    # left every data-dependent endpoint at 503 and silently un-tested.
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def _first_account_id(client):
+    """Return a loaded account id, or skip if model/data artifacts aren't present."""
+    response = client.get("/accounts?limit=1")
+    if response.status_code == 503:
+        pytest.skip("Features not loaded — model artifacts not available")
+    accounts = response.json()["accounts"]
+    if not accounts:
+        pytest.skip("No accounts loaded")
+    return accounts[0]["account_id"]
 
 
 class TestHealthEndpoint:
@@ -75,3 +90,42 @@ class TestSegmentEndpoint:
         response = client.get("/segments/summary")
         # May return 503 if data not loaded
         assert response.status_code in [200, 503]
+
+
+class TestHappyPath:
+    """Exercise real prediction paths when model/data artifacts are present.
+
+    Each test skips cleanly if artifacts aren't loaded (e.g. on a fresh CI
+    checkout), so the suite stays green there while genuinely covering the
+    happy paths locally / wherever artifacts exist.
+    """
+
+    def test_clv_prediction_returns_score(self, client):
+        account_id = _first_account_id(client)
+        response = client.post("/predict/clv", json={"account_id": account_id})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["account_id"] == account_id
+        assert data["clv_12m_predicted"] >= 0
+        assert 0 <= data["clv_percentile"] <= 100
+
+    def test_account_profile_current_products(self, client):
+        """Regression test for the outreach current-products bug (M1):
+        current_products must reflect adopted products and never overlap
+        the (non-current) recommendations."""
+        account_id = _first_account_id(client)
+        response = client.get(f"/accounts/{account_id}")
+        assert response.status_code == 200
+        profile = response.json()
+        assert isinstance(profile["current_products"], list)
+        recommended = {r["product"] for r in profile["top_recommendations"]}
+        assert set(profile["current_products"]).isdisjoint(recommended)
+
+    def test_cross_sell_recommendations_ranked(self, client):
+        account_id = _first_account_id(client)
+        response = client.post("/predict/cross-sell", json={"account_id": account_id, "top_n": 3})
+        assert response.status_code == 200
+        recs = response.json()["recommendations"]
+        assert len(recs) <= 3
+        scores = [r["propensity_score"] for r in recs]
+        assert scores == sorted(scores, reverse=True)
