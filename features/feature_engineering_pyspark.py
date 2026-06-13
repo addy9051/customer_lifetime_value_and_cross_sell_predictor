@@ -69,8 +69,8 @@ def compute_rfm_features(spark, accounts_df, bookings_df, cutoff_date: str):
     rfm = (
         past_bookings.groupBy("account_id")
         .agg(
-            F.count("*").alias("total_ticket_count"),
-            F.sum("total_amount").alias("total_spend"),
+            F.count("*").alias("total_booking_count"),
+            F.sum("amount").alias("total_spend"),
             F.max("booking_date").alias("last_booking_date"),
         )
         .withColumn(
@@ -87,7 +87,7 @@ def compute_rfm_features(spark, accounts_df, bookings_df, cutoff_date: str):
             .groupBy("account_id")
             .agg(
                 F.count("*").alias(f"booking_count_{window_days}d"),
-                F.sum("total_amount").alias(f"total_spend_{window_days}d"),
+                F.sum("amount").alias(f"total_spend_{window_days}d"),
             )
         )
 
@@ -121,15 +121,15 @@ def compute_service_adoption(spark, accounts_df, contracts_df, cutoff_date: str)
 
     # Aggregate to account level
     adoption = active.groupBy("account_id").agg(
-        F.count("*").alias("num_active_products"),
-        F.sum("annual_value").alias("active_contract_value"),
+        F.countDistinct("product").alias("num_active_products"),
+        F.sum("contract_value").alias("active_contract_value"),
         # Create boolean adoption columns using pivot-like operations
-        F.max(F.when(F.col("product_line") == "Neo", 1).otherwise(0)).alias("has_neo"),
-        F.max(F.when(F.col("product_line") == "Egencia Analytics Studio", 1).otherwise(0)).alias(
+        F.max(F.when(F.col("product") == "Neo", 1).otherwise(0)).alias("has_neo"),
+        F.max(F.when(F.col("product") == "Egencia Analytics Studio", 1).otherwise(0)).alias(
             "has_egencia_analytics_studio"
         ),
-        F.max(F.when(F.col("product_line") == "Meetings & Events", 1).otherwise(0)).alias("has_meetings_and_events"),
-        F.max(F.when(F.col("product_line") == "Travel Consulting", 1).otherwise(0)).alias("has_travel_consulting"),
+        F.max(F.when(F.col("product") == "Meetings & Events", 1).otherwise(0)).alias("has_meetings_and_events"),
+        F.max(F.when(F.col("product") == "Travel Consulting", 1).otherwise(0)).alias("has_travel_consulting"),
     )
 
     return accounts_df.join(adoption, on="account_id", how="left").fillna(0.0)
@@ -157,7 +157,7 @@ def main():
 
     try:
         # 1. Load Data
-        accounts, profiles, bookings, contracts, tickets, clv = load_tables(spark, data_dir)
+        accounts, _profiles, bookings, contracts, _tickets, clv = load_tables(spark, data_dir)
 
         # 2. RFM Features
         feature_matrix = compute_rfm_features(spark, accounts, bookings, CUTOFF_DATE)
