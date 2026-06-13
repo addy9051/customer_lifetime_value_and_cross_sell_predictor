@@ -317,8 +317,11 @@ def load_models():
                 logger.error("SECURITY: Refusing to load survival model — integrity check failed")
             else:
                 models["survival"] = joblib.load(survival_path)
-                if scaler_path.exists() and _verify_artifact_integrity(scaler_path):
-                    models["survival_scaler"] = joblib.load(scaler_path)
+                if scaler_path.exists():
+                    if _verify_artifact_integrity(scaler_path):
+                        models["survival_scaler"] = joblib.load(scaler_path)
+                    else:
+                        logger.error("SECURITY: Refusing to load survival scaler — integrity check failed")
                 logger.info("Loaded survival model locally")
 
         # Cross-sell model
@@ -328,8 +331,10 @@ def load_models():
                 logger.error("SECURITY: Refusing to load cross-sell model — integrity check failed")
             else:
                 models["cross_sell"] = joblib.load(xs_path)
-                with open(ARTIFACTS_DIR / "cross_sell" / "feature_columns.json") as f:
-                    models["cross_sell_features"] = json.load(f)
+                xs_features_path = ARTIFACTS_DIR / "cross_sell" / "feature_columns.json"
+                if xs_features_path.exists():
+                    with open(xs_features_path) as f:
+                        models["cross_sell_features"] = json.load(f)
                 logger.info("Loaded cross-sell model locally")
 
     # Segmentation
@@ -577,7 +582,7 @@ async def predict_cross_sell(request: CrossSellRequest, _user: dict = Depends(ve
     current_products = []
 
     for name in product_names:
-        score = float(proba_row[f"{name}_score"])
+        score = float(proba_row.get(f"{name}_score", 0.0))
         is_current = int(proba_row.get(f"{name}_current", 0))
 
         if is_current:
@@ -641,7 +646,7 @@ async def get_account_profile(account_id: str, _user: dict = Depends(verify_toke
                 if int(pr.get(f"{name}_current", 0)) == 1:
                     current_products.append(name)
                 else:
-                    top_recs.append({"product": name, "score": round(float(pr[f"{name}_score"]), 4)})
+                    top_recs.append({"product": name, "score": round(float(pr.get(f"{name}_score", 0.0)), 4)})
             top_recs.sort(key=lambda x: x["score"], reverse=True)
             top_recs = top_recs[:3]
 
