@@ -121,7 +121,7 @@ def compute_service_adoption(spark, accounts_df, contracts_df, cutoff_date: str)
 
     # Aggregate to account level
     adoption = active.groupBy("account_id").agg(
-        F.countDistinct("product").alias("num_active_products"),
+        F.count("*").alias("num_active_products"),
         F.sum("contract_value").alias("active_contract_value"),
         # Create boolean adoption columns using pivot-like operations
         F.max(F.when(F.col("product") == "Neo", 1).otherwise(0)).alias("has_neo"),
