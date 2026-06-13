@@ -59,7 +59,23 @@ def load_tables(spark, data_dir: Path):
 
 
 def compute_rfm_features(spark, accounts_df, bookings_df, cutoff_date: str):
-    """Compute Recency, Frequency, and Monetary features using PySpark SQL."""
+    """
+    Compute account-level Recency, Frequency, and Monetary (RFM) features as of the provided cutoff date and attach them to the accounts DataFrame.
+    
+    Parameters:
+        spark: SparkSession instance used for Spark operations.
+        accounts_df (DataFrame): Account-level DataFrame containing `account_id`.
+        bookings_df (DataFrame): Bookings DataFrame with at least `account_id`, `booking_date`, and `amount`.
+        cutoff_date (str): Cutoff date (ISO string) to compute features as of this date.
+    
+    Returns:
+        DataFrame: `accounts_df` left-joined with per-account RFM features including:
+            - total_booking_count, total_spend, days_since_last_booking
+            - booking_count_30d, total_spend_30d, aov_30d
+            - booking_count_90d, total_spend_90d, aov_90d
+            - booking_count_180d, total_spend_180d, aov_180d
+        All feature columns use numeric types and missing values are filled with 0.0.
+    """
     logger.info("Computing scalable RFM features...")
 
     # Filter bookings prior to cutoff
@@ -110,7 +126,23 @@ def compute_rfm_features(spark, accounts_df, bookings_df, cutoff_date: str):
 
 
 def compute_service_adoption(spark, accounts_df, contracts_df, cutoff_date: str):
-    """Compute product usage features in PySpark."""
+    """
+    Compute account-level multi-product adoption flags and aggregates as of a cutoff date.
+    
+    Filters contracts that are active at the cutoff (keeps rows where start_date < cutoff_date and end_date > cutoff_date), aggregates per account to produce:
+    - num_active_products: count of distinct active products
+    - active_contract_value: sum of contract_value for active contracts
+    - has_neo, has_egencia_analytics_studio, has_meetings_and_events, has_travel_consulting: binary (0/1) flags indicating presence of those products
+    
+    Parameters:
+        spark: SparkSession (unused directly but kept for API consistency).
+        accounts_df: DataFrame containing account-level rows keyed by `account_id`.
+        contracts_df: DataFrame of service contracts with `account_id`, `product`, `contract_value`, `start_date`, and `end_date`.
+        cutoff_date (str): Cutoff timestamp (string) used to determine active contracts.
+    
+    Returns:
+        DataFrame: `accounts_df` left-joined with the adoption aggregates and flags; missing values are filled with 0.0.
+    """
     logger.info("Computing multi-product adoption flags...")
 
     # Active contracts at cutoff
@@ -136,6 +168,11 @@ def compute_service_adoption(spark, accounts_df, contracts_df, cutoff_date: str)
 
 
 def main():
+    """
+    Run the PySpark feature engineering pipeline: load input tables, derive account-level RFM and service-adoption features as of the module cutoff date, optionally join CLV labels, and write the resulting account feature matrix to Parquet.
+    
+    The function is a CLI entry point that accepts `--data-dir` (default: "data/synthetic") and `--output-dir` (default: "data/features_spark"). It requires PySpark to be available; if not present, the function logs an error and exits. When executed it creates a Spark session, ensures the output directory exists, loads CSV input tables, computes RFM and product-adoption features aligned to the module cutoff date, joins 12-month CLV labels when available, writes the final feature matrix to `<output-dir>/account_features_spark` in Parquet format (coalesced to a single file for local emulation), and always stops the Spark session on exit.
+    """
     parser = argparse.ArgumentParser(description="PySpark Feature Engineering")
     parser.add_argument("--data-dir", type=str, default="data/synthetic")
     parser.add_argument("--output-dir", type=str, default="data/features_spark")

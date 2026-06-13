@@ -13,6 +13,14 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture(scope="module")
 def client():
+    """
+    Provide a TestClient configured to run the FastAPI app's lifespan with required environment variables set.
+    
+    Sets `ARTIFACTS_DIR` and `DATA_DIR` environment variables, imports the FastAPI `app`, and yields a TestClient created inside a context manager so the application's startup/lifespan handlers run before tests execute.
+    
+    Returns:
+        TestClient: A test client for the FastAPI `app` with startup/lifespan executed.
+    """
     os.environ["ARTIFACTS_DIR"] = "models/artifacts"
     os.environ["DATA_DIR"] = "data"
 
@@ -26,7 +34,16 @@ def client():
 
 
 def _first_account_id(client):
-    """Return a loaded account id, or skip if model/data artifacts aren't present."""
+    """
+    Retrieve the first loaded account identifier or skip the test if artifacts or accounts are unavailable.
+    
+    Returns:
+        account_id (str): The `account_id` of the first loaded account.
+    
+    Notes:
+        If the endpoint returns HTTP 503, the test is skipped via `pytest.skip("Features not loaded — model artifacts not available")`.
+        If no accounts are returned, the test is skipped via `pytest.skip("No accounts loaded")`.
+    """
     response = client.get("/accounts?limit=1")
     if response.status_code == 503:
         pytest.skip("Features not loaded — model artifacts not available")

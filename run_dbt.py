@@ -20,7 +20,12 @@ from dotenv import load_dotenv
 
 
 def _resolve_dbt() -> str:
-    """Locate the dbt executable, preferring one next to the current interpreter."""
+    """
+    Locate the dbt executable, preferring a copy located next to the current Python interpreter.
+    
+    Returns:
+        The path to the dbt executable to invoke. If a dbt binary exists alongside the current Python executable it is returned; otherwise the first 'dbt' found on PATH is returned, or the string 'dbt' as a final fallback.
+    """
     candidate = Path(sys.executable).parent / ("dbt.exe" if os.name == "nt" else "dbt")
     if candidate.exists():
         return str(candidate)
@@ -29,6 +34,11 @@ def _resolve_dbt() -> str:
 
 def main():
     # Load environment variables into os.environ
+    """
+    Prepare environment and invoke the dbt CLI, then exit with dbt's return code.
+    
+    Loads environment variables from a local `.env`, sets DBT_PROFILES_DIR to "data/dbt", resolves the dbt executable, builds a safe argument-list invocation including any wrapper CLI arguments and "--project-dir data/dbt", prints the command, runs dbt without a shell, and exits the process with dbt's exit status.
+    """
     load_dotenv()
 
     # Point dbt to our custom structure

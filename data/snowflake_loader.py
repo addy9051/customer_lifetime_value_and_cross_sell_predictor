@@ -214,7 +214,17 @@ def load_clv_labels(cursor, data_dir: Path, database: str):
 
 
 def load_ml_artifacts(cursor, database: str):
-    """Load latest ML artifacts directly to Snowflake RAW schema."""
+    """
+    Upload ML artifact CSVs from the repository's models/artifacts directory into the RAW schema of the given Snowflake database.
+    
+    Parameters:
+        database (str): Target Snowflake database identifier (e.g., "CLV_CROSS_SELL").
+    
+    Notes:
+        - Looks for specific artifact files for `CHURN_PREDICTIONS` and `CROSS_SELL_RECOMMENDATIONS`.
+        - If an artifact CSV exists, it will be uploaded and loaded into the corresponding RAW table.
+        - If an artifact CSV is missing, a warning is logged.
+    """
     ml_base_dir = Path(__file__).parent.parent / "models" / "artifacts"
 
     ml_tables = {
