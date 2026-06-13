@@ -58,12 +58,21 @@ def load_tables(spark, data_dir: Path):
     return accounts_df, profiles_df, bookings_df, contracts_df, tickets_df, clv_df
 
 
-def compute_rfm_features(spark, accounts_df, bookings_df, cutoff_date: str):
+def compute_rfm_features(spark, accounts_df, travelers_df, bookings_df, cutoff_date: str):
     """Compute Recency, Frequency, and Monetary features using PySpark SQL."""
     logger.info("Computing scalable RFM features...")
 
+    # Bookings carry only traveler_id, not account_id, so resolve the account
+    # via travelers before aggregating (mirrors the traveler->account join in
+    # stg_bookings.sql). Without this, groupBy("account_id") raises AnalysisException.
+    bookings_with_account = bookings_df.join(
+        travelers_df.select("traveler_id", "account_id"),
+        on="traveler_id",
+        how="left",
+    )
+
     # Filter bookings prior to cutoff
-    past_bookings = bookings_df.filter(F.col("booking_date") < F.lit(cutoff_date).cast("timestamp"))
+    past_bookings = bookings_with_account.filter(F.col("booking_date") < F.lit(cutoff_date).cast("timestamp"))
 
     # Base aggregation metrics
     rfm = (
@@ -80,7 +89,7 @@ def compute_rfm_features(spark, accounts_df, bookings_df, cutoff_date: str):
 
     # Time-window aggregations (30, 90, 180 days)
     for window_days in [30, 90, 180]:
-        window_start = F.date_sub(F.lit(cutoff_date).cast("timestamp"), window_days)
+        window_start = F.date_sub(F.lit(cutoff_date).cast("date"), window_days)
 
         window_df = (
             past_bookings.filter(F.col("booking_date") >= window_start)
@@ -157,10 +166,10 @@ def main():
 
     try:
         # 1. Load Data
-        accounts, _profiles, bookings, contracts, _tickets, clv = load_tables(spark, data_dir)
+        accounts, profiles, bookings, contracts, _tickets, clv = load_tables(spark, data_dir)
 
         # 2. RFM Features
-        feature_matrix = compute_rfm_features(spark, accounts, bookings, CUTOFF_DATE)
+        feature_matrix = compute_rfm_features(spark, accounts, profiles, bookings, CUTOFF_DATE)
 
         # 3. Service Adoption
         feature_matrix = compute_service_adoption(spark, feature_matrix, contracts, CUTOFF_DATE)
