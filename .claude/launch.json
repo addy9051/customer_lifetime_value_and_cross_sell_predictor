@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dsml-portfolio",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "serve", "D:\\Downloads\\dsml_portfolio", "--listen", "3334", "--no-clipboard"],
+      "port": 3334
+    }
+  ]
+}
